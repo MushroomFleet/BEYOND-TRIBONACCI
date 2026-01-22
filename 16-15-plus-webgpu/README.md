@@ -1,216 +1,129 @@
-# BEYOND-TRIBONACCI: Sequential vs Parallel Race V2
+# BEYOND TRIBONACCI
 
-[![WebGPU](https://img.shields.io/badge/WebGPU-Enabled-00d4aa?style=flat-square&logo=webgl)](https://gpuweb.github.io/gpuweb/)
-[![React](https://img.shields.io/badge/React-18.2.0-61dafb?style=flat-square&logo=react)](https://reactjs.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+> **Procedural Deterministic Seed-Based World Generation — A React Component Showcase**
 
-A visual demonstration of the fundamental difference between **sequential** (Tribonacci-based) and **parallel** (hash-based) procedural generation — powered by **WebGPU** for true GPU parallelism.
+This repository contains 15 interactive demonstrations exploring modern procedural generation techniques that supersede Braben's 1984 Tribonacci algorithm. Each demo is a self-contained React JSX component illustrating a specific technique from the position-as-seed paradigm.
 
-![Sequential vs Parallel Race](https://img.shields.io/badge/Demo-Live-brightgreen?style=for-the-badge)
+---
 
-## 🎯 What This Demonstrates
+## The Core Insight
 
-In 1984, David Braben's Elite used a clever **Tribonacci sequence** to generate 2,048 star systems from just 6 bytes of seed data. This was brilliant for its time, but has an inherent limitation: **each state depends on the previous three states**, making it fundamentally sequential.
+David Braben's original Elite encoded 2,048 star systems in just 6 bytes using Tribonacci sequences—a masterpiece of constraint-driven design. But modern hardware demands a fundamentally different approach:
 
-Modern **Position-is-Seed** approaches using hash functions have no such limitation — any cell can be computed independently, enabling **massive parallelization** on GPUs.
+**Position itself should be the seed.**
 
-This demo races both approaches side-by-side:
+No state machine. No sequential iteration. Any coordinate, anywhere in infinite space, immediately computes its contents through pure functions of spatial position. These demonstrations make that paradigm tangible and interactive.
 
-| Approach | Access Pattern | Complexity | Parallelism |
-|----------|---------------|------------|-------------|
-| 🐢 **Tribonacci** | Sequential only | O(N) to reach cell N | ❌ None |
-| ⚡ **Hash (WebGPU)** | Random access | O(1) per cell | ✅ Thousands of threads |
+---
 
-## 🚀 Quick Preview
+## Demo Collection
 
-### Option 1: Open the Demo Directly
-Simply open `demo.html` in a WebGPU-compatible browser:
+| # | Demo | Technique | Description |
+|---|------|-----------|-------------|
+| 01 | [Coordinate Hash Explorer](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/01-Coordinate-Hash-Explorer) | Position-as-Seed | Interactive grid demonstrating O(1) property lookup from coordinates |
+| 02 | [Property Layer Visualizer](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/02-Property-Layer-Visualizer) | Multi-Layer Hashing | Toggle independent property layers derived from salt-varied hashes |
+| 03 | [Noise Comparison Grid](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/03-Noise-Comparison-Grid) | Simplex vs Perlin | Side-by-side noise algorithm comparison with artifact highlighting |
+| 04 | [fBm Octave Stacker](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/04-fBm-Octave-Stacker) | Fractal Brownian Motion | Slider-controlled octave accumulation with parameter adjustment |
+| 05 | [Warp Field Demonstrator](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/05-Warp-Field-Demonstrator) | Domain Warping | Before/after visualization of domain distortion effects |
+| 06 | [Layered Terrain Builder](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/06-Layered-Terrain-Builder) | Noise Stack | Step-through composition of foundation to application layers |
+| 07 | [Galaxy-to-Grain Drill-Down](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/07-Galaxy-to-Grain-Drill-Down) | Hierarchical Constraints | Nested zoom showing parent-to-child constraint propagation |
+| 08 | [Instant Coordinate Jumper](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/08-Instant-Coordinate-Jumper) | O(1) Random Access | Jump to arbitrary coordinates instantly vs sequential iteration |
+| 09 | [Neighbor Relationship Map](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/09-Neighbor-Relationship-Map) | Spatial Coherence | Visualize mathematical kinship between adjacent cells |
+| 10 | [Seamless Zoom Navigator](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/10-Seamless-Zoom-Navigator) | Multi-Scale Consistency | Continuous zoom without LOD discontinuities |
+| 11 | [Stellar Forge Simulator](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/11-Stellar-Forge-Simulator) | Star Generation | Mass → luminosity → temperature derivation chains |
+| 12 | [Orbital Mechanics Display](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/12-Orbital-Mechanics-Display) | Planet Derivation | Frost lines, habitable zones, and constrained planet generation |
+| 13 | [Planetary Surface Renderer](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/13-Planetary-Surface-Renderer) | Terrain Heightfields | Multi-octave spherical terrain with noise contribution breakdown |
+| 14 | [Throughput Benchmark Viz](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/14-Throughput-Benchmark-Viz) | Hash Performance | Live performance comparison of hash function throughput |
+| 15 | [Sequential vs Parallel Race](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/15-Sequential-vs-Parallel-Race) | Tribonacci Comparison | Visual race between sequential and parallel generation |
 
-```bash
-# Clone the repository
-git clone https://github.com/MushroomFleet/BEYOND-TRIBONACCI.git
-cd BEYOND-TRIBONACCI
+---
 
-# Open demo.html in Chrome/Edge 113+
-# On Windows:
-start demo.html
-
-# On macOS:
-open demo.html
-
-# On Linux:
-xdg-open demo.html
-```
-
-### Option 2: Serve Locally
-```bash
-# Using Python
-python -m http.server 8080
-
-# Using Node.js
-npx serve .
-
-# Then open http://localhost:8080/demo.html
-```
-
-### Browser Requirements
-- **Chrome 113+** or **Edge 113+** (WebGPU enabled by default)
-- **Firefox Nightly** with `dom.webgpu.enabled` flag
-- Hardware acceleration must be enabled
-
-## 📦 Integration Guide
-
-### For React Projects
-
-1. **Copy the component:**
-   ```bash
-   cp SequentialVsParallelRaceV2.jsx src/components/
-   ```
-
-2. **Install dependencies** (if not already present):
-   ```bash
-   npm install react react-dom
-   ```
-
-3. **Import and use:**
-   ```jsx
-   import SequentialVsParallelRaceV2 from './components/SequentialVsParallelRaceV2';
-   
-   function App() {
-     return <SequentialVsParallelRaceV2 />;
-   }
-   ```
-
-4. **Ensure Tailwind CSS is configured** (or adapt styles to your CSS framework)
-
-### For Vanilla JavaScript Projects
-
-Use the standalone `demo.html` as a reference. The key pieces are:
-
-1. **WebGPU initialization** (`useWebGPU` hook)
-2. **Compute shader** (`COMPUTE_SHADER` constant)
-3. **Pipeline setup** (`useGPUCompute` hook)
-
-### Extracting Just the WebGPU Hash Compute
-
-If you only need the GPU compute functionality:
-
-```javascript
-// WGSL Compute Shader
-const COMPUTE_SHADER = `
-struct Params {
-  width: u32,
-  height: u32,
-  seed: u32,
-  _pad: u32,
-}
-
-@group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read_write> output: array<u32>;
-
-fn hash64(x: u32, y: u32, seed: u32) -> u32 {
-  var h: u32 = (x * 374761393u + y * 668265263u + seed * 2147483647u);
-  h = (h ^ (h >> 15u)) * 0x85ebca6bu;
-  h = (h ^ (h >> 13u)) * 0xc2b2ae35u;
-  return h ^ (h >> 16u);
-}
-
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-  let x = global_id.x;
-  let y = global_id.y;
-  
-  if (x >= params.width || y >= params.height) {
-    return;
-  }
-  
-  let idx = y * params.width + x;
-  output[idx] = hash64(x, y, params.seed);
-}
-`;
-```
-
-## 🏗️ Project Structure
+## Repository Structure
 
 ```
 BEYOND-TRIBONACCI/
-├── demo.html                        # Standalone demo (no build required)
-├── SequentialVsParallelRaceV2.jsx   # React component
-├── README.md                        # This file
-└── LICENSE                          # MIT License
+├── README.md                          # This file
+├── research/                          # Source documentation and methodology
+│   └── BeyondTribonacci-EndlessWorlds.md
+├── 01-Coordinate-Hash-Explorer/
+│   ├── README.md                      # Demo explanation
+│   ├── CoordinateHashExplorer.jsx     # React component source
+│   └── demo.html                      # Local preview (not hosted)
+├── 02-Property-Layer-Visualizer/
+│   ├── README.md
+│   ├── PropertyLayerVisualizer.jsx
+│   └── demo.html
+...
+└── 15-Sequential-vs-Parallel-Race/
+    ├── README.md
+    ├── SequentialVsParallelRace.jsx
+    └── demo.html
 ```
 
-## 🔧 Configuration Options
+---
 
-The component accepts these configurable parameters:
+## Research Foundation
 
-| Parameter | Default | Range | Description |
-|-----------|---------|-------|-------------|
-| `gridSize` | 64 | 16-128 | Grid dimensions (gridSize × gridSize) |
-| `cellsPerFrame` | 50 | 10-200 | Animation reveal speed |
-| `seed` | 42 | 1-9999 | Random seed for generation |
+The `/research/` folder contains the complete methodology documentation that informed these demonstrations:
 
-## 🧠 Technical Details
+- **Part I:** Tribonacci's Limitations — why sequential generation fails modern requirements
+- **Part II:** Hash-First Architecture — the position-as-seed paradigm
+- **Part III:** Coherent Noise — Simplex, fBm, and domain warping techniques
+- **Part IV:** Hierarchical Constraint Propagation — parent-child property inheritance
+- **Part IX:** Reference Implementation — complete C code for star/planet/terrain generation
+- **Part X:** Performance Benchmarks — throughput comparisons across hash functions
 
-### The Tribonacci Limitation
+This documentation provides the theoretical foundation and implementation specifics for extending any demo.
 
-```javascript
-// Each state depends on the previous THREE states
-// MUST iterate sequentially - no skipping allowed
-function tribonacciNext() {
-  const temp = (s0 + s1 + s2) & 0xFFFF;
-  s0 = s1;
-  s1 = s2;  
-  s2 = temp;
-  return s2;
+---
+
+## Quick Start
+
+Each demo folder includes a `demo.html` for local preview:
+
+```bash
+git clone https://github.com/MushroomFleet/BEYOND-TRIBONACCI.git
+cd BEYOND-TRIBONACCI/01-Coordinate-Hash-Explorer
+# Open demo.html in your browser
+```
+
+For development, each `.jsx` component can be imported into any React project:
+
+```jsx
+import CoordinateHashExplorer from './01-Coordinate-Hash-Explorer/CoordinateHashExplorer';
+
+function App() {
+  return <CoordinateHashExplorer seed={12345} />;
 }
-
-// To get cell 1000, must compute cells 0-999 first
-// O(N) complexity, fundamentally serial
 ```
 
-### The Hash Advantage
+---
 
-```wgsl
-// Position IS the seed - no dependencies
-// ANY cell can be computed independently
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-  // Each GPU thread computes ONE cell
-  // ALL 16,384 cells computed SIMULTANEOUSLY
-  output[id.y * width + id.x] = hash(id.x, id.y, seed);
-}
-```
+## Design Principles
 
-### Performance Comparison
+All demonstrations follow these constraints:
 
-On a typical GPU (e.g., RTX 2050):
+- **Pure Functional Generation** — identical inputs always produce identical outputs
+- **Zero External State** — no databases, no caches, no persistence required
+- **Interactive Parameters** — every technique exposes adjustable controls
+- **Educational Focus** — clarity over optimization; understanding over performance
+- **Self-Contained** — each demo works independently with no cross-dependencies
 
-| Grid Size | Cells | Tribonacci (CPU) | Hash (WebGPU) | Speedup |
-|-----------|-------|------------------|---------------|---------|
-| 32×32 | 1,024 | ~50ms | ~0.5ms | ~100x |
-| 64×64 | 4,096 | ~200ms | ~0.8ms | ~250x |
-| 128×128 | 16,384 | ~800ms | ~1.2ms | ~650x |
+---
 
-*Results vary by hardware. The demo displays actual measured times.*
+## Key Concepts Demonstrated
 
-## 🎮 Use Cases
+### Position-as-Seed (Demos 01, 08)
+Replace sequential state mutation with pure coordinate hashing. Any point in space immediately computes its properties: `properties(x, y, z) = hash(x, y, z, layer_salt)`
 
-This Position-is-Seed paradigm powers:
+### Coherent Noise (Demos 03, 04, 05, 06)
+Raw hashes produce white noise. Layer Simplex noise with fBm octaves and domain warping to create spatially meaningful patterns with controllable frequency characteristics.
 
-- **Procedural terrain generation** (Minecraft-style infinite worlds)
-- **Star system generation** (No Man's Sky, Elite Dangerous)
-- **Texture synthesis** (GPU-computed noise)
-- **Roguelike dungeon generation** (deterministic from coordinates)
-- **Any infinite procedural content**
+### Hierarchical Constraints (Demos 07, 11, 12)
+Parent properties constrain child generation. Galaxy density affects star formation; stellar mass determines planetary composition; orbital radius influences atmospheric retention.
 
-## 🤝 Contributing
-
-Contributions welcome! Please feel free to submit issues and pull requests.
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
+### Spatial Coherence (Demos 09, 10)
+Unlike Tribonacci where adjacent systems share no mathematical kinship, hash-based generation with coherent noise ensures neighbors have related properties—enabling meaningful regional variation.
 
 ---
 
@@ -222,7 +135,7 @@ If you use this codebase in your research or project, please cite:
 
 ```bibtex
 @software{beyond_tribonacci,
-  title = {BEYOND-TRIBONACCI: WebGPU Sequential vs Parallel Race Demonstration},
+  title = {Beyond Tribonacci: Procedural Deterministic Seed-Based World Generation Showcase},
   author = {Drift Johnson},
   year = {2025},
   url = {https://github.com/MushroomFleet/BEYOND-TRIBONACCI},
@@ -230,6 +143,6 @@ If you use this codebase in your research or project, please cite:
 }
 ```
 
-### Donate:
+### Donate
 
 [![Ko-Fi](https://cdn.ko-fi.com/cdn/kofi3.png?v=3)](https://ko-fi.com/driftjohnson)
