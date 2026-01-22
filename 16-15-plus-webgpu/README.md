@@ -2,7 +2,12 @@
 
 > **Procedural Deterministic Seed-Based World Generation — A React Component Showcase**
 
-This repository contains 15 interactive demonstrations exploring modern procedural generation techniques that supersede Braben's 1984 Tribonacci algorithm. Each demo is a self-contained React JSX component illustrating a specific technique from the position-as-seed paradigm.
+This repository contains 16 interactive demonstrations exploring modern procedural generation techniques that supersede Braben's 1984 Tribonacci algorithm. Each demo is a self-contained React JSX component illustrating a specific technique from the position-as-seed paradigm.
+
+## Part of the BEYOND TRIBONACCI project
+[BEYOND-TRIBONACCI](https://github.com/MushroomFleet/BEYOND-TRIBONACCI)
+[Zerobytes-Skill](https://github.com/MushroomFleet/Zerobytes-Skill)
+[Braben-Building-Principles-Skill](https://github.com/MushroomFleet/Braben-Building-Principles-Skill)
 
 ---
 
@@ -35,6 +40,7 @@ No state machine. No sequential iteration. Any coordinate, anywhere in infinite 
 | 13 | [Planetary Surface Renderer](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/13-Planetary-Surface-Renderer) | Terrain Heightfields | Multi-octave spherical terrain with noise contribution breakdown |
 | 14 | [Throughput Benchmark Viz](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/14-Throughput-Benchmark-Viz) | Hash Performance | Live performance comparison of hash function throughput |
 | 15 | [Sequential vs Parallel Race](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/15-Sequential-vs-Parallel-Race) | Tribonacci Comparison | Visual race between sequential and parallel generation |
+| 16 | [15 + WebGPU](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/16-15-plus-webgpu) | GPU Parallelism | Demo 15 with WebGPU compute shaders — 400x speedup on 4GB GPU |
 
 ---
 
@@ -57,6 +63,10 @@ BEYOND-TRIBONACCI/
 └── 15-Sequential-vs-Parallel-Race/
     ├── README.md
     ├── SequentialVsParallelRace.jsx
+    └── demo.html
+└── 16-15-plus-webgpu/
+    ├── README.md
+    ├── SequentialVsParallelRaceV2.jsx
     └── demo.html
 ```
 
@@ -124,6 +134,20 @@ Parent properties constrain child generation. Galaxy density affects star format
 
 ### Spatial Coherence (Demos 09, 10)
 Unlike Tribonacci where adjacent systems share no mathematical kinship, hash-based generation with coherent noise ensures neighbors have related properties—enabling meaningful regional variation.
+
+---
+
+## Bonus: WebGPU Acceleration
+
+Demo 16 extends the Sequential vs Parallel Race with **WebGPU compute shaders**, demonstrating the full potential of the position-as-seed paradigm on modern graphics hardware.
+
+| Metric | CPU (Demo 15) | WebGPU (Demo 16) |
+|--------|---------------|------------------|
+| Hash computation | Single-threaded | Thousands of GPU cores |
+| Typical speedup | 1x baseline | ~400x on 4GB GPU |
+| Grid fill time | Seconds | Milliseconds |
+
+This demonstrates why the hash-first architecture matters: Tribonacci's sequential dependency chain cannot parallelize regardless of hardware. Position-as-seed generation scales linearly with available compute cores—from 8 CPU threads to 4,000+ GPU shader units.
 
 ---
 
