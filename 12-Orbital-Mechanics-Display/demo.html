@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orbital Mechanics Display | Beyond Tribonacci Demo</title>
+  <meta name="description" content="Interactive demonstration of parent-constrained procedural generation for planetary systems">
+  
+  <!-- React & ReactDOM from CDN -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body, #root {
+      width: 100%;
+      min-height: 100vh;
+      background: #000;
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.02);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    /* Pulse animation for star */
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.9; }
+    }
+    
+    /* Loading state */
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: radial-gradient(ellipse at center, #0a0a1a 0%, #000008 50%, #000000 100%);
+      color: #4a90d9;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      letter-spacing: 0.2em;
+    }
+    
+    .loading::after {
+      content: '';
+      width: 20px;
+      height: 20px;
+      border: 2px solid transparent;
+      border-top-color: #4a90d9;
+      border-radius: 50%;
+      margin-left: 12px;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"><div class="loading">INITIALIZING STELLAR FORGE</div></div>
+  
+  <script type="text/babel">
+    const { useState, useMemo, useCallback } = React;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // ORBITAL MECHANICS DISPLAY
+    // Demonstrates parent-constrained child generation: stellar properties determine
+    // planetary system characteristics through pure functional derivation.
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // HASH UTILITIES: Position-is-Seed Paradigm
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const splitmix64 = (seed) => {
+      let z = (seed += 0x9e3779b97f4a7c15n);
+      z = (z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n;
+      z = (z ^ (z >> 27n)) * 0x94d049bb133111ebn;
+      return z ^ (z >> 31n);
+    };
+
+    const hashCoord = (x, y, z, salt = 0n) => {
+      const combined = BigInt(x) * 73856093n ^ BigInt(y) * 19349663n ^ BigInt(z) * 83492791n ^ BigInt(salt);
+      return splitmix64(combined & 0xFFFFFFFFFFFFFFFFn);
+    };
+
+    const hashToFloat = (hash) => {
+      return Number(hash & 0xFFFFFFn) / 0xFFFFFF;
+    };
+
+    const hashToRange = (hash, min, max) => {
+      return min + hashToFloat(hash) * (max - min);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // STELLAR CLASSIFICATION: Parent Entity Generation
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const SPECTRAL_CLASSES = {
+      O: { name: 'O-type Blue Giant', color: '#9bb0ff', tempRange: [30000, 50000], massRange: [16, 150], luminosityRange: [30000, 1000000], rarity: 0.00003, description: 'Extremely hot, massive, and rare' },
+      B: { name: 'B-type Blue-White', color: '#aabfff', tempRange: [10000, 30000], massRange: [2.1, 16], luminosityRange: [25, 30000], rarity: 0.0013, description: 'Hot and luminous' },
+      A: { name: 'A-type White', color: '#cad7ff', tempRange: [7500, 10000], massRange: [1.4, 2.1], luminosityRange: [5, 25], rarity: 0.006, description: 'Bright with strong hydrogen lines' },
+      F: { name: 'F-type Yellow-White', color: '#f8f7ff', tempRange: [6000, 7500], massRange: [1.04, 1.4], luminosityRange: [1.5, 5], rarity: 0.03, description: 'Slightly hotter than Sun' },
+      G: { name: 'G-type Yellow (Solar)', color: '#fff4ea', tempRange: [5200, 6000], massRange: [0.8, 1.04], luminosityRange: [0.6, 1.5], rarity: 0.076, description: 'Sun-like stars' },
+      K: { name: 'K-type Orange', color: '#ffd2a1', tempRange: [3700, 5200], massRange: [0.45, 0.8], luminosityRange: [0.08, 0.6], rarity: 0.121, description: 'Cooler and stable' },
+      M: { name: 'M-type Red Dwarf', color: '#ffcc6f', tempRange: [2400, 3700], massRange: [0.08, 0.45], luminosityRange: [0.0001, 0.08], rarity: 0.765, description: 'Most common star type' },
+    };
+
+    const generateStar = (seed) => {
+      const starHash = hashCoord(seed, 0, 0, 1n);
+      const classRoll = hashToFloat(starHash);
+      
+      let cumulative = 0;
+      let spectralClass = 'M';
+      for (const [cls, data] of Object.entries(SPECTRAL_CLASSES)) {
+        cumulative += data.rarity;
+        if (classRoll < cumulative) {
+          spectralClass = cls;
+          break;
+        }
+      }
+      
+      const classData = SPECTRAL_CLASSES[spectralClass];
+      const propHash1 = hashCoord(seed, 1, 0, 2n);
+      const propHash2 = hashCoord(seed, 2, 0, 3n);
+      const propHash3 = hashCoord(seed, 3, 0, 4n);
+      const propHash4 = hashCoord(seed, 4, 0, 5n);
+      
+      const temperature = hashToRange(propHash1, classData.tempRange[0], classData.tempRange[1]);
+      const mass = hashToRange(propHash2, classData.massRange[0], classData.massRange[1]);
+      const luminosity = hashToRange(propHash3, classData.luminosityRange[0], classData.luminosityRange[1]);
+      const metallicity = hashToRange(propHash4, 0.001, 0.04);
+      const age = hashToRange(hashCoord(seed, 5, 0, 6n), 0.1, 10);
+      const radius = Math.pow(mass, 0.8);
+      
+      return {
+        seed,
+        spectralClass,
+        name: classData.name,
+        color: classData.color,
+        description: classData.description,
+        temperature: Math.round(temperature),
+        mass: parseFloat(mass.toFixed(3)),
+        luminosity: parseFloat(luminosity.toFixed(4)),
+        radius: parseFloat(radius.toFixed(3)),
+        metallicity: parseFloat(metallicity.toFixed(4)),
+        age: parseFloat(age.toFixed(2)),
+      };
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ZONE CALCULATIONS: Derived from Stellar Properties
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const calculateZones = (star) => {
+      const frostLine = 2.7 * Math.sqrt(star.luminosity);
+      const hzInner = Math.sqrt(star.luminosity / 1.1);
+      const hzOuter = Math.sqrt(star.luminosity / 0.53);
+      const innerLimit = 0.1 * Math.sqrt(star.mass);
+      const outerLimit = 40 * Math.pow(star.mass, 0.5);
+      const venusZone = Math.sqrt(star.luminosity / 1.77);
+      const marsZone = Math.sqrt(star.luminosity / 0.32);
+      
+      return {
+        innerLimit: parseFloat(innerLimit.toFixed(3)),
+        venusZone: parseFloat(venusZone.toFixed(3)),
+        hzInner: parseFloat(hzInner.toFixed(3)),
+        hzOuter: parseFloat(hzOuter.toFixed(3)),
+        marsZone: parseFloat(marsZone.toFixed(3)),
+        frostLine: parseFloat(frostLine.toFixed(3)),
+        outerLimit: parseFloat(outerLimit.toFixed(3)),
+      };
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PLANET TYPES
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const PLANET_TYPES = {
+      MOLTEN: { name: 'Molten', icon: '🔥', color: '#ff4444', bgGradient: 'linear-gradient(135deg, #8B0000, #FF4500, #FFD700)' },
+      ROCKY: { name: 'Rocky', icon: '🪨', color: '#8b7355', bgGradient: 'linear-gradient(135deg, #4a3728, #8b7355, #6d5a48)' },
+      DESERT: { name: 'Desert', icon: '🏜️', color: '#d4a574', bgGradient: 'linear-gradient(135deg, #c2956e, #e8d4a8, #9c7f5c)' },
+      OCEAN: { name: 'Ocean', icon: '🌊', color: '#4a90d9', bgGradient: 'linear-gradient(135deg, #1a4a7a, #4a90d9, #7ab8e8)' },
+      EARTHLIKE: { name: 'Earth-like', icon: '🌍', color: '#4caf50', bgGradient: 'linear-gradient(135deg, #2d5a2d, #4caf50, #81c784)' },
+      ICE: { name: 'Ice World', icon: '❄️', color: '#b8d4e8', bgGradient: 'linear-gradient(135deg, #8fb8d8, #d4e8f0, #f0f8ff)' },
+      GAS_GIANT: { name: 'Gas Giant', icon: '🪐', color: '#d4a574', bgGradient: 'linear-gradient(135deg, #8b6914, #d4a574, #f4e4c4)' },
+      ICE_GIANT: { name: 'Ice Giant', icon: '💠', color: '#64b5f6', bgGradient: 'linear-gradient(135deg, #1565c0, #64b5f6, #90caf9)' },
+      DWARF: { name: 'Dwarf Planet', icon: '⚫', color: '#666', bgGradient: 'linear-gradient(135deg, #333, #666, #888)' },
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PLANET GENERATION: Child Entities Constrained by Parent Star
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const generatePlanet = (star, zones, planetIndex, starSeed) => {
+      const planetSeed = hashCoord(starSeed, planetIndex, 100, 7n);
+      
+      const baseAU = 0.4 + 0.3 * Math.pow(2, planetIndex);
+      let orbitalRadius = baseAU * Math.pow(star.mass, 0.5);
+      orbitalRadius *= 0.7 + 0.6 * hashToFloat(planetSeed);
+      orbitalRadius = Math.max(zones.innerLimit * 1.5, Math.min(orbitalRadius, zones.outerLimit * 0.9));
+      
+      const temperature = 278 * Math.pow(star.luminosity, 0.25) / Math.sqrt(orbitalRadius);
+      const orbitalPeriod = Math.sqrt(Math.pow(orbitalRadius, 3) / star.mass);
+      
+      let planetType;
+      let mass, radius;
+      
+      const typeHash = hashToFloat(hashCoord(starSeed, planetIndex, 200, 8n));
+      const massHash = hashToFloat(hashCoord(starSeed, planetIndex, 300, 9n));
+      const sizeHash = hashToFloat(hashCoord(starSeed, planetIndex, 400, 10n));
+      
+      if (orbitalRadius > zones.frostLine) {
+        const giantChance = 0.7 - planetIndex * 0.05;
+        if (typeHash < giantChance) {
+          if (hashToFloat(hashCoord(starSeed, planetIndex, 500, 11n)) < 0.6) {
+            planetType = 'GAS_GIANT';
+            mass = 50 + 250 * massHash;
+            radius = 9 + 3 * sizeHash;
+          } else {
+            planetType = 'ICE_GIANT';
+            mass = 10 + 20 * massHash;
+            radius = 3.5 + 1.5 * sizeHash;
+          }
+        } else if (typeHash < 0.85) {
+          planetType = 'ICE';
+          mass = 0.01 + 2 * massHash;
+          radius = Math.pow(mass, 0.27) * (0.9 + 0.2 * sizeHash);
+        } else {
+          planetType = 'DWARF';
+          mass = 0.001 + 0.01 * massHash;
+          radius = Math.pow(mass, 0.3) * (0.8 + 0.4 * sizeHash);
+        }
+      } else if (orbitalRadius < zones.venusZone) {
+        if (temperature > 700) {
+          planetType = 'MOLTEN';
+        } else {
+          planetType = typeHash < 0.4 ? 'DESERT' : 'ROCKY';
+        }
+        mass = 0.05 + 3 * massHash;
+        radius = Math.pow(mass, 0.27) * (0.9 + 0.2 * sizeHash);
+      } else if (orbitalRadius >= zones.hzInner && orbitalRadius <= zones.hzOuter) {
+        mass = 0.3 + 4 * massHash;
+        radius = Math.pow(mass, 0.27) * (0.9 + 0.2 * sizeHash);
+        
+        if (mass > 0.5 && mass < 5) {
+          const earthChance = 0.15 * (star.metallicity / 0.02);
+          if (typeHash < earthChance) {
+            planetType = 'EARTHLIKE';
+          } else if (typeHash < earthChance + 0.25) {
+            planetType = 'OCEAN';
+          } else if (typeHash < earthChance + 0.5) {
+            planetType = 'DESERT';
+          } else {
+            planetType = 'ROCKY';
+          }
+        } else {
+          planetType = typeHash < 0.3 ? 'DESERT' : 'ROCKY';
+        }
+      } else {
+        mass = 0.1 + 3 * massHash;
+        radius = Math.pow(mass, 0.27) * (0.9 + 0.2 * sizeHash);
+        
+        if (temperature > 400) {
+          planetType = typeHash < 0.6 ? 'DESERT' : 'ROCKY';
+        } else if (temperature > 200) {
+          planetType = typeHash < 0.2 ? 'OCEAN' : typeHash < 0.6 ? 'DESERT' : 'ROCKY';
+        } else {
+          planetType = typeHash < 0.4 ? 'ICE' : 'ROCKY';
+        }
+      }
+      
+      const escapeV = 11.2 * Math.sqrt(mass) / radius;
+      const thermalV = 0.157 * Math.sqrt(temperature);
+      const hasAtmosphere = escapeV > 6 * thermalV;
+      const gravity = mass / (radius * radius);
+      
+      let moonCount = 0;
+      const moonHash = hashToFloat(hashCoord(starSeed, planetIndex, 600, 12n));
+      if (planetType === 'GAS_GIANT') {
+        moonCount = Math.floor(3 + 15 * moonHash);
+      } else if (planetType === 'ICE_GIANT') {
+        moonCount = Math.floor(1 + 10 * moonHash);
+      } else if (moonHash < 0.35 && mass > 0.1) {
+        moonCount = Math.floor(1 + 2 * hashToFloat(hashCoord(starSeed, planetIndex, 700, 13n)));
+      }
+      
+      const greekLetters = ['α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'ι', 'κ'];
+      const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+      const nameStyle = hashToFloat(hashCoord(starSeed, planetIndex, 800, 14n));
+      const designation = nameStyle < 0.5 
+        ? `${greekLetters[planetIndex % 10]}` 
+        : romanNumerals[planetIndex % 10];
+      
+      return {
+        index: planetIndex,
+        designation,
+        type: planetType,
+        typeData: PLANET_TYPES[planetType],
+        orbitalRadius: parseFloat(orbitalRadius.toFixed(3)),
+        temperature: Math.round(temperature),
+        mass: parseFloat(mass.toFixed(4)),
+        radius: parseFloat(radius.toFixed(3)),
+        gravity: parseFloat(gravity.toFixed(3)),
+        orbitalPeriod: parseFloat(orbitalPeriod.toFixed(2)),
+        hasAtmosphere,
+        moonCount,
+        inHabitableZone: orbitalRadius >= zones.hzInner && orbitalRadius <= zones.hzOuter,
+        beyondFrostLine: orbitalRadius > zones.frostLine,
+      };
+    };
+
+    const generatePlanetarySystem = (star, starSeed) => {
+      const zones = calculateZones(star);
+      
+      const countHash = hashToFloat(hashCoord(starSeed, 0, 1000, 15n));
+      const basePlanets = Math.floor(3 + 7 * countHash * (star.metallicity / 0.02));
+      const planetCount = Math.min(10, Math.max(2, basePlanets));
+      
+      const planets = [];
+      for (let i = 0; i < planetCount; i++) {
+        planets.push(generatePlanet(star, zones, i, starSeed));
+      }
+      
+      planets.sort((a, b) => a.orbitalRadius - b.orbitalRadius);
+      
+      return { zones, planets };
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MAIN COMPONENT
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    function OrbitalMechanicsDisplay() {
+      const [seed, setSeed] = useState(42);
+      const [selectedPlanet, setSelectedPlanet] = useState(null);
+      const [showZones, setShowZones] = useState(true);
+      const [viewScale, setViewScale] = useState(1);
+      const [animateOrbits, setAnimateOrbits] = useState(true);
+      
+      const systemData = useMemo(() => {
+        const star = generateStar(seed);
+        const { zones, planets } = generatePlanetarySystem(star, seed);
+        return { star, zones, planets };
+      }, [seed]);
+      
+      const { star, zones, planets } = systemData;
+      
+      const maxOrbit = Math.max(...planets.map(p => p.orbitalRadius), zones.outerLimit * 0.3);
+      const scale = (280 * viewScale) / maxOrbit;
+      
+      const randomizeSeed = useCallback(() => {
+        setSeed(Math.floor(Math.random() * 1000000));
+        setSelectedPlanet(null);
+      }, []);
+      
+      const orbitKeyframes = `
+        @keyframes orbit {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `;
+      
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: 'radial-gradient(ellipse at center, #0a0a1a 0%, #000008 50%, #000000 100%)',
+          color: '#e8e8f0',
+          fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
+          padding: '24px',
+          boxSizing: 'border-box',
+        }}>
+          <style>{orbitKeyframes}</style>
+          
+          {/* Header */}
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '32px',
+          }}>
+            <h1 style={{
+              fontSize: '2rem',
+              fontWeight: 300,
+              letterSpacing: '0.3em',
+              textTransform: 'uppercase',
+              background: 'linear-gradient(90deg, #4a90d9, #fff, #d4a574)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              marginBottom: '8px',
+            }}>
+              Orbital Mechanics Display
+            </h1>
+            <p style={{
+              fontSize: '0.75rem',
+              color: '#666',
+              letterSpacing: '0.2em',
+            }}>
+              PARENT-CONSTRAINED PROCEDURAL GENERATION • SEED: {seed}
+            </p>
+          </div>
+          
+          {/* Controls */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '16px',
+            justifyContent: 'center',
+            marginBottom: '32px',
+            padding: '16px',
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.05)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                System Seed
+              </label>
+              <input
+                type="number"
+                value={seed}
+                onChange={(e) => { setSeed(parseInt(e.target.value) || 0); setSelectedPlanet(null); }}
+                style={{
+                  width: '100px',
+                  padding: '8px 12px',
+                  background: 'rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '4px',
+                  color: '#fff',
+                  fontFamily: 'inherit',
+                  fontSize: '0.85rem',
+                }}
+              />
+              <button
+                onClick={randomizeSeed}
+                style={{
+                  padding: '8px 16px',
+                  background: 'linear-gradient(135deg, #1a3a5c, #2a5a8c)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  transition: 'all 0.2s',
+                }}
+                onMouseOver={(e) => e.target.style.background = 'linear-gradient(135deg, #2a5a8c, #3a7abc)'}
+                onMouseOut={(e) => e.target.style.background = 'linear-gradient(135deg, #1a3a5c, #2a5a8c)'}
+              >
+                Randomize
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                View Scale
+              </label>
+              <input
+                type="range"
+                min="0.3"
+                max="3"
+                step="0.1"
+                value={viewScale}
+                onChange={(e) => setViewScale(parseFloat(e.target.value))}
+                style={{ width: '100px', accentColor: '#4a90d9' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: '#4a90d9', width: '40px' }}>{viewScale.toFixed(1)}x</span>
+            </div>
+            
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showZones}
+                onChange={(e) => setShowZones(e.target.checked)}
+                style={{ accentColor: '#4a90d9' }}
+              />
+              <span style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Show Zones
+              </span>
+            </label>
+            
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={animateOrbits}
+                onChange={(e) => setAnimateOrbits(e.target.checked)}
+                style={{ accentColor: '#4a90d9' }}
+              />
+              <span style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Animate
+              </span>
+            </label>
+          </div>
+          
+          {/* Main Content Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '24px',
+            maxWidth: '1600px',
+            margin: '0 auto',
+          }}>
+            
+            {/* Left Panel: Star Properties */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.05)',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                background: `linear-gradient(135deg, ${star.color}15, transparent)`,
+              }}>
+                <h2 style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: '#888',
+                  margin: 0,
+                }}>
+                  Parent Star
+                </h2>
+              </div>
+              
+              <div style={{ padding: '20px' }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  marginBottom: '20px',
+                }}>
+                  <div style={{
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '50%',
+                    background: `radial-gradient(circle at 30% 30%, ${star.color}, ${star.color}88 60%, ${star.color}44)`,
+                    boxShadow: `0 0 40px ${star.color}66, 0 0 80px ${star.color}33, inset -10px -10px 20px rgba(0,0,0,0.3)`,
+                    animation: 'pulse 4s ease-in-out infinite',
+                  }} />
+                </div>
+                
+                <div style={{
+                  textAlign: 'center',
+                  marginBottom: '20px',
+                }}>
+                  <div style={{
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                    color: star.color,
+                    marginBottom: '4px',
+                  }}>
+                    {star.name}
+                  </div>
+                  <div style={{
+                    fontSize: '0.7rem',
+                    color: '#666',
+                    fontStyle: 'italic',
+                  }}>
+                    {star.description}
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {[
+                    { label: 'Temperature', value: `${star.temperature.toLocaleString()} K`, color: star.color },
+                    { label: 'Mass', value: `${star.mass} M☉`, color: '#d4a574' },
+                    { label: 'Luminosity', value: `${star.luminosity} L☉`, color: '#fff4ea' },
+                    { label: 'Radius', value: `${star.radius} R☉`, color: '#b8d4e8' },
+                    { label: 'Metallicity', value: `${(star.metallicity * 100).toFixed(2)}%`, color: '#a0a0a0' },
+                    { label: 'Age', value: `${star.age} Gyr`, color: '#888' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      background: 'rgba(0,0,0,0.2)',
+                      borderRadius: '6px',
+                      borderLeft: `3px solid ${color}`,
+                    }}>
+                      <span style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {label}
+                      </span>
+                      <span style={{ fontSize: '0.85rem', color, fontWeight: 500 }}>
+                        {value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            {/* Center Panel: Orbital Diagram */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.05)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              gridColumn: 'span 1',
+            }}>
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+              }}>
+                <h2 style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: '#888',
+                  margin: 0,
+                }}>
+                  Orbital Diagram
+                </h2>
+              </div>
+              
+              <div style={{
+                flex: 1,
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '20px',
+                position: 'relative',
+                minHeight: '400px',
+              }}>
+                <svg
+                  viewBox="-320 -320 640 640"
+                  style={{
+                    width: '100%',
+                    maxWidth: '500px',
+                    aspectRatio: '1',
+                  }}
+                >
+                  <defs>
+                    <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor={star.color} stopOpacity="0.8" />
+                      <stop offset="50%" stopColor={star.color} stopOpacity="0.2" />
+                      <stop offset="100%" stopColor={star.color} stopOpacity="0" />
+                    </radialGradient>
+                    <filter id="glow">
+                      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                      <feMerge>
+                        <feMergeNode in="coloredBlur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                      </feMerge>
+                    </filter>
+                  </defs>
+                  
+                  {showZones && (
+                    <>
+                      <circle
+                        cx="0" cy="0"
+                        r={Math.min(zones.outerLimit * scale, 300)}
+                        fill="none"
+                        stroke="rgba(100,100,100,0.1)"
+                        strokeWidth="1"
+                        strokeDasharray="4 4"
+                      />
+                      
+                      <circle
+                        cx="0" cy="0"
+                        r={zones.frostLine * scale}
+                        fill="none"
+                        stroke="rgba(100,180,255,0.3)"
+                        strokeWidth="2"
+                        strokeDasharray="8 4"
+                      />
+                      <text
+                        x={zones.frostLine * scale + 5}
+                        y="-5"
+                        fill="rgba(100,180,255,0.6)"
+                        fontSize="8"
+                        fontFamily="inherit"
+                      >
+                        Frost Line ({zones.frostLine} AU)
+                      </text>
+                      
+                      <circle
+                        cx="0" cy="0"
+                        r={zones.hzOuter * scale}
+                        fill="rgba(76, 175, 80, 0.08)"
+                        stroke="none"
+                      />
+                      <circle
+                        cx="0" cy="0"
+                        r={zones.hzInner * scale}
+                        fill="#000008"
+                        stroke="none"
+                      />
+                      <circle
+                        cx="0" cy="0"
+                        r={zones.hzOuter * scale}
+                        fill="none"
+                        stroke="rgba(76, 175, 80, 0.4)"
+                        strokeWidth="1"
+                      />
+                      <circle
+                        cx="0" cy="0"
+                        r={zones.hzInner * scale}
+                        fill="none"
+                        stroke="rgba(76, 175, 80, 0.4)"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={(zones.hzInner + zones.hzOuter) / 2 * scale}
+                        y="12"
+                        fill="rgba(76, 175, 80, 0.7)"
+                        fontSize="7"
+                        fontFamily="inherit"
+                        textAnchor="middle"
+                      >
+                        Habitable Zone
+                      </text>
+                      
+                      <circle
+                        cx="0" cy="0"
+                        r={zones.venusZone * scale}
+                        fill="none"
+                        stroke="rgba(255,100,50,0.3)"
+                        strokeWidth="1"
+                        strokeDasharray="2 2"
+                      />
+                    </>
+                  )}
+                  
+                  {planets.map((planet, i) => (
+                    <circle
+                      key={`orbit-${i}`}
+                      cx="0" cy="0"
+                      r={planet.orbitalRadius * scale}
+                      fill="none"
+                      stroke={selectedPlanet === i ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)'}
+                      strokeWidth={selectedPlanet === i ? 2 : 1}
+                    />
+                  ))}
+                  
+                  <circle cx="0" cy="0" r="30" fill="url(#starGlow)" />
+                  <circle
+                    cx="0" cy="0"
+                    r={Math.max(8, Math.min(20, star.radius * 8))}
+                    fill={star.color}
+                    filter="url(#glow)"
+                  />
+                  
+                  {planets.map((planet, i) => {
+                    const orbitRadius = planet.orbitalRadius * scale;
+                    const planetSize = Math.max(4, Math.min(16, planet.radius * 1.5));
+                    const initialAngle = hashToFloat(hashCoord(seed, i, 999, 99n)) * Math.PI * 2;
+                    const animationDuration = animateOrbits ? Math.max(5, planet.orbitalPeriod * 3) : 0;
+                    
+                    return (
+                      <g
+                        key={`planet-${i}`}
+                        style={{
+                          transformOrigin: '0px 0px',
+                          animation: animateOrbits ? `orbit ${animationDuration}s linear infinite` : 'none',
+                        }}
+                      >
+                        <g transform={`rotate(${initialAngle * 180 / Math.PI})`}>
+                          <circle
+                            cx={orbitRadius}
+                            cy="0"
+                            r={planetSize}
+                            fill={planet.typeData.color}
+                            stroke={selectedPlanet === i ? '#fff' : 'rgba(255,255,255,0.3)'}
+                            strokeWidth={selectedPlanet === i ? 2 : 1}
+                            style={{ cursor: 'pointer', transition: 'all 0.2s' }}
+                            onClick={() => setSelectedPlanet(selectedPlanet === i ? null : i)}
+                            filter="url(#glow)"
+                          />
+                          <text
+                            x={orbitRadius}
+                            y={-planetSize - 4}
+                            fill={selectedPlanet === i ? '#fff' : 'rgba(255,255,255,0.6)'}
+                            fontSize="7"
+                            fontFamily="inherit"
+                            textAnchor="middle"
+                          >
+                            {planet.designation}
+                          </text>
+                        </g>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+              
+              <div style={{
+                padding: '12px 20px',
+                borderTop: '1px solid rgba(255,255,255,0.05)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '16px',
+                justifyContent: 'center',
+              }}>
+                {[
+                  { color: 'rgba(255,100,50,0.6)', label: `Venus Zone (<${zones.venusZone} AU)` },
+                  { color: 'rgba(76,175,80,0.6)', label: `Habitable (${zones.hzInner}-${zones.hzOuter} AU)` },
+                  { color: 'rgba(100,180,255,0.6)', label: `Frost Line (${zones.frostLine} AU)` },
+                ].map(({ color, label }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '12px', height: '12px', background: color, borderRadius: '2px' }} />
+                    <span style={{ fontSize: '0.65rem', color: '#888' }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Right Panel: Planet Cards */}
+            <div style={{
+              background: 'rgba(255,255,255,0.02)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255,255,255,0.05)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '600px',
+            }}>
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+              }}>
+                <h2 style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: '#888',
+                  margin: 0,
+                }}>
+                  Planetary Bodies ({planets.length})
+                </h2>
+              </div>
+              
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '12px',
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {planets.map((planet, i) => (
+                    <div
+                      key={i}
+                      onClick={() => setSelectedPlanet(selectedPlanet === i ? null : i)}
+                      style={{
+                        padding: '12px',
+                        background: selectedPlanet === i 
+                          ? `linear-gradient(135deg, ${planet.typeData.color}22, transparent)`
+                          : 'rgba(0,0,0,0.2)',
+                        borderRadius: '8px',
+                        border: `1px solid ${selectedPlanet === i ? planet.typeData.color + '44' : 'transparent'}`,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        marginBottom: '8px',
+                      }}>
+                        <span style={{ fontSize: '1.2rem' }}>{planet.typeData.icon}</span>
+                        <div>
+                          <div style={{
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            color: planet.typeData.color,
+                          }}>
+                            {planet.designation} • {planet.typeData.name}
+                          </div>
+                          <div style={{
+                            fontSize: '0.65rem',
+                            color: '#666',
+                          }}>
+                            {planet.orbitalRadius} AU • {planet.orbitalPeriod} yr orbit
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {selectedPlanet === i && (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '6px',
+                          marginTop: '10px',
+                          paddingTop: '10px',
+                          borderTop: '1px solid rgba(255,255,255,0.05)',
+                        }}>
+                          {[
+                            { label: 'Temperature', value: `${planet.temperature} K` },
+                            { label: 'Mass', value: `${planet.mass} M⊕` },
+                            { label: 'Radius', value: `${planet.radius} R⊕` },
+                            { label: 'Gravity', value: `${planet.gravity} g` },
+                            { label: 'Atmosphere', value: planet.hasAtmosphere ? 'Yes' : 'No' },
+                            { label: 'Moons', value: planet.moonCount },
+                          ].map(({ label, value }) => (
+                            <div key={label} style={{
+                              fontSize: '0.65rem',
+                            }}>
+                              <span style={{ color: '#666' }}>{label}: </span>
+                              <span style={{ color: '#aaa' }}>{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+                        {planet.inHabitableZone && (
+                          <span style={{
+                            fontSize: '0.55rem',
+                            padding: '2px 6px',
+                            background: 'rgba(76,175,80,0.2)',
+                            color: '#4caf50',
+                            borderRadius: '3px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                          }}>
+                            Habitable Zone
+                          </span>
+                        )}
+                        {planet.beyondFrostLine && (
+                          <span style={{
+                            fontSize: '0.55rem',
+                            padding: '2px 6px',
+                            background: 'rgba(100,180,255,0.2)',
+                            color: '#64b4f6',
+                            borderRadius: '3px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                          }}>
+                            Beyond Frost Line
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Bottom Panel: Constraint Propagation Explanation */}
+          <div style={{
+            marginTop: '24px',
+            padding: '20px',
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: '12px',
+            border: '1px solid rgba(255,255,255,0.05)',
+            maxWidth: '1600px',
+            margin: '24px auto 0',
+          }}>
+            <h3 style={{
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              color: '#888',
+              marginBottom: '16px',
+            }}>
+              Constraint Propagation Chain
+            </h3>
+            
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '12px',
+              alignItems: 'stretch',
+            }}>
+              {[
+                { title: 'Stellar Mass', derived: 'System Extent', formula: 'outer_limit = 40 × M^0.5' },
+                { title: 'Stellar Luminosity', derived: 'Zone Positions', formula: 'frost_line = 2.7 × √L' },
+                { title: 'Orbital Position', derived: 'Planet Type', formula: 'r > frost_line → giants' },
+                { title: 'Zone + Position', derived: 'Temperature', formula: 'T = 278 × L^0.25 / √r' },
+                { title: 'Mass + Radius', derived: 'Atmosphere', formula: 'v_esc > 6 × v_thermal' },
+                { title: 'Metallicity', derived: 'Earth-like Chance', formula: 'P = 0.15 × (Z / 0.02)' },
+              ].map(({ title, derived, formula }, i) => (
+                <div key={i} style={{
+                  flex: '1 1 200px',
+                  padding: '12px',
+                  background: 'rgba(0,0,0,0.3)',
+                  borderRadius: '6px',
+                  borderLeft: '3px solid #4a90d9',
+                }}>
+                  <div style={{
+                    fontSize: '0.7rem',
+                    color: '#4a90d9',
+                    fontWeight: 600,
+                    marginBottom: '4px',
+                  }}>
+                    {title} → {derived}
+                  </div>
+                  <div style={{
+                    fontSize: '0.65rem',
+                    color: '#666',
+                    fontFamily: 'inherit',
+                  }}>
+                    {formula}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <p style={{
+              fontSize: '0.7rem',
+              color: '#555',
+              marginTop: '16px',
+              lineHeight: 1.6,
+            }}>
+              This demonstration shows how parent entity properties (the star) constrain and determine 
+              child entity properties (planets) through pure functional derivation. The same seed always 
+              produces identical results—position is seed, and the universe springs complete from coordinates alone.
+            </p>
+          </div>
+          
+          {/* Footer */}
+          <div style={{
+            marginTop: '32px',
+            textAlign: 'center',
+            padding: '16px',
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+          }}>
+            <p style={{ fontSize: '0.65rem', color: '#444', letterSpacing: '0.1em' }}>
+              BEYOND TRIBONACCI • ORBITAL MECHANICS DISPLAY • DEMO #{seed}
+            </p>
+            <p style={{ fontSize: '0.6rem', color: '#333', marginTop: '4px' }}>
+              <a href="https://github.com/MushroomFleet/BEYOND-TRIBONACCI" 
+                 style={{ color: '#4a90d9', textDecoration: 'none' }}
+                 target="_blank" rel="noopener noreferrer">
+                GitHub Repository
+              </a>
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // RENDER
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<OrbitalMechanicsDisplay />);
+  </script>
+</body>
+</html>
