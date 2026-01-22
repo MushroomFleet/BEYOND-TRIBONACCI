@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neighbor Relationship Map | Beyond Tribonacci Demo</title>
+    <meta name="description" content="Interactive demonstration of spatial coherence through coherent noise vs Tribonacci discontinuity">
+    
+    <!-- React 18 from CDN -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX transformation -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(145deg, #0a0a12 0%, #12121f 50%, #0d0d18 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+        
+        #root {
+            min-height: 100vh;
+        }
+        
+        /* Loading State */
+        .loading-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            gap: 20px;
+        }
+        
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(100, 220, 180, 0.2);
+            border-top-color: #64dcb4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+        }
+        
+        /* Range Input Styles */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #64dcb4 0%, #4a9d8c 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(100, 220, 180, 0.4);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #64dcb4 0%, #4a9d8c 100%);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(100, 220, 180, 0.4);
+        }
+        
+        input[type="range"]:focus {
+            outline: none;
+        }
+        
+        /* Scrollbar Styles */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="loading-screen">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Initializing Neighbor Relationship Map...</div>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useCallback, useRef, useEffect } = React;
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // NEIGHBOR RELATIONSHIP MAP
+        // Demonstrates spatial coherence through coherent noise vs Tribonacci discontinuity
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // PURE HASH FUNCTIONS (Deterministic, no external dependencies)
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        // SplitMix64-style hash for coordinate-based generation
+        const hash = (x, y, seed = 0) => {
+            let h = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
+            h = Math.imul(h ^ (h >>> 15), 1831565813);
+            h = Math.imul(h ^ (h >>> 13), 1423966843);
+            h = (h ^ (h >>> 16)) >>> 0;
+            return h / 4294967296;
+        };
+
+        // PCG-style permutation for additional randomness
+        const pcg = (seed) => {
+            let state = (seed * 747796405 + 2891336453) >>> 0;
+            let word = (((state >>> ((state >>> 28) + 4)) ^ state) * 277803737) >>> 0;
+            return ((word >>> 22) ^ word) >>> 0;
+        };
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // SIMPLEX-LIKE COHERENT NOISE (2D Implementation)
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        const GRAD2 = [
+            [1, 1], [-1, 1], [1, -1], [-1, -1],
+            [1, 0], [-1, 0], [0, 1], [0, -1],
+            [1, 1], [-1, 1], [1, -1], [-1, -1]
+        ];
+
+        const createPermTable = (seed) => {
+            const perm = new Array(512);
+            const base = new Array(256);
+            
+            for (let i = 0; i < 256; i++) base[i] = i;
+            
+            let s = seed >>> 0;
+            for (let i = 255; i > 0; i--) {
+                s = pcg(s);
+                const j = s % (i + 1);
+                [base[i], base[j]] = [base[j], base[i]];
+            }
+            
+            for (let i = 0; i < 512; i++) perm[i] = base[i & 255];
+            return perm;
+        };
+
+        const simplex2D = (x, y, perm) => {
+            const F2 = 0.5 * (Math.sqrt(3) - 1);
+            const G2 = (3 - Math.sqrt(3)) / 6;
+            
+            const s = (x + y) * F2;
+            const i = Math.floor(x + s);
+            const j = Math.floor(y + s);
+            
+            const t = (i + j) * G2;
+            const X0 = i - t;
+            const Y0 = j - t;
+            const x0 = x - X0;
+            const y0 = y - Y0;
+            
+            const i1 = x0 > y0 ? 1 : 0;
+            const j1 = x0 > y0 ? 0 : 1;
+            
+            const x1 = x0 - i1 + G2;
+            const y1 = y0 - j1 + G2;
+            const x2 = x0 - 1 + 2 * G2;
+            const y2 = y0 - 1 + 2 * G2;
+            
+            const ii = ((i % 256) + 256) % 256;
+            const jj = ((j % 256) + 256) % 256;
+            
+            const gi0 = perm[ii + perm[jj]] % 12;
+            const gi1 = perm[ii + i1 + perm[jj + j1]] % 12;
+            const gi2 = perm[ii + 1 + perm[jj + 1]] % 12;
+            
+            let n0 = 0, n1 = 0, n2 = 0;
+            
+            let t0 = 0.5 - x0 * x0 - y0 * y0;
+            if (t0 >= 0) {
+                t0 *= t0;
+                n0 = t0 * t0 * (GRAD2[gi0][0] * x0 + GRAD2[gi0][1] * y0);
+            }
+            
+            let t1 = 0.5 - x1 * x1 - y1 * y1;
+            if (t1 >= 0) {
+                t1 *= t1;
+                n1 = t1 * t1 * (GRAD2[gi1][0] * x1 + GRAD2[gi1][1] * y1);
+            }
+            
+            let t2 = 0.5 - x2 * x2 - y2 * y2;
+            if (t2 >= 0) {
+                t2 *= t2;
+                n2 = t2 * t2 * (GRAD2[gi2][0] * x2 + GRAD2[gi2][1] * y2);
+            }
+            
+            return (70 * (n0 + n1 + n2) + 1) / 2;
+        };
+
+        const fbm = (x, y, perm, octaves = 4, persistence = 0.5, lacunarity = 2) => {
+            let value = 0;
+            let amplitude = 1;
+            let frequency = 1;
+            let maxValue = 0;
+            
+            for (let i = 0; i < octaves; i++) {
+                value += amplitude * simplex2D(x * frequency, y * frequency, perm);
+                maxValue += amplitude;
+                amplitude *= persistence;
+                frequency *= lacunarity;
+            }
+            
+            return value / maxValue;
+        };
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // TRIBONACCI-STYLE WHITE NOISE
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        const tribonacciNoise = (x, y, seed) => {
+            return hash(x, y, seed);
+        };
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // RELATIONSHIP CALCULATION
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        const calculateSimilarity = (value1, value2) => {
+            return 1 - Math.abs(value1 - value2);
+        };
+
+        const getNeighborOffsets = (radius) => {
+            const offsets = [];
+            for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance <= radius) {
+                        offsets.push({ dx, dy, distance });
+                    }
+                }
+            }
+            return offsets.sort((a, b) => a.distance - b.distance);
+        };
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // COLOR UTILITIES
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        const valueToColor = (value, mode = 'terrain') => {
+            if (mode === 'terrain') {
+                if (value < 0.3) {
+                    const t = value / 0.3;
+                    return `rgb(${Math.floor(20 + t * 30)}, ${Math.floor(50 + t * 80)}, ${Math.floor(120 + t * 60)})`;
+                } else if (value < 0.45) {
+                    const t = (value - 0.3) / 0.15;
+                    return `rgb(${Math.floor(50 + t * 150)}, ${Math.floor(130 + t * 70)}, ${Math.floor(180 - t * 100)})`;
+                } else if (value < 0.55) {
+                    const t = (value - 0.45) / 0.1;
+                    return `rgb(${Math.floor(200 - t * 60)}, ${Math.floor(200 - t * 40)}, ${Math.floor(80 + t * 40)})`;
+                } else if (value < 0.7) {
+                    const t = (value - 0.55) / 0.15;
+                    return `rgb(${Math.floor(140 - t * 60)}, ${Math.floor(160 - t * 40)}, ${Math.floor(120 - t * 60)})`;
+                } else if (value < 0.85) {
+                    const t = (value - 0.7) / 0.15;
+                    return `rgb(${Math.floor(80 + t * 60)}, ${Math.floor(120 - t * 30)}, ${Math.floor(60 + t * 20)})`;
+                } else {
+                    const t = (value - 0.85) / 0.15;
+                    return `rgb(${Math.floor(140 + t * 115)}, ${Math.floor(90 + t * 165)}, ${Math.floor(80 + t * 175)})`;
+                }
+            } else if (mode === 'heatmap') {
+                const r = Math.floor(255 * (1 - value));
+                const g = Math.floor(255 * value);
+                return `rgb(${r}, ${g}, 60)`;
+            } else {
+                const v = Math.floor(value * 255);
+                return `rgb(${v}, ${v}, ${v})`;
+            }
+        };
+
+        const similarityToGlow = (similarity) => {
+            const hue = similarity * 120;
+            return `hsla(${hue}, 100%, 50%, ${0.3 + similarity * 0.5})`;
+        };
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // MAIN COMPONENT
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        function NeighborRelationshipMap() {
+            const [seed, setSeed] = useState(42);
+            const [gridSize, setGridSize] = useState(20);
+            const [noiseScale, setNoiseScale] = useState(0.15);
+            const [octaves, setOctaves] = useState(4);
+            const [selectedCell, setSelectedCell] = useState(null);
+            const [heatmapRadius, setHeatmapRadius] = useState(3);
+            const [showConnections, setShowConnections] = useState(true);
+
+            const permTable = useMemo(() => createPermTable(seed), [seed]);
+
+            const noiseGrids = useMemo(() => {
+                const coherent = [];
+                const tribonacci = [];
+                
+                for (let y = 0; y < gridSize; y++) {
+                    const coherentRow = [];
+                    const tribonacciRow = [];
+                    for (let x = 0; x < gridSize; x++) {
+                        coherentRow.push(fbm(x * noiseScale, y * noiseScale, permTable, octaves));
+                        tribonacciRow.push(tribonacciNoise(x, y, seed));
+                    }
+                    coherent.push(coherentRow);
+                    tribonacci.push(tribonacciRow);
+                }
+                
+                return { coherent, tribonacci };
+            }, [seed, gridSize, noiseScale, octaves, permTable]);
+
+            const relationshipData = useMemo(() => {
+                if (!selectedCell) return null;
+                
+                const { x, y } = selectedCell;
+                const neighborOffsets = getNeighborOffsets(heatmapRadius);
+                
+                const coherentValue = noiseGrids.coherent[y]?.[x] ?? 0;
+                const tribonacciValue = noiseGrids.tribonacci[y]?.[x] ?? 0;
+                
+                const coherentRelations = [];
+                const tribonacciRelations = [];
+                
+                let coherentAvgSimilarity = 0;
+                let tribonacciAvgSimilarity = 0;
+                let count = 0;
+                
+                for (const { dx, dy, distance } of neighborOffsets) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    
+                    if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                        const neighborCoherent = noiseGrids.coherent[ny][nx];
+                        const neighborTribonacci = noiseGrids.tribonacci[ny][nx];
+                        
+                        const coherentSim = calculateSimilarity(coherentValue, neighborCoherent);
+                        const tribonacciSim = calculateSimilarity(tribonacciValue, neighborTribonacci);
+                        
+                        coherentRelations.push({ x: nx, y: ny, similarity: coherentSim, distance, value: neighborCoherent });
+                        tribonacciRelations.push({ x: nx, y: ny, similarity: tribonacciSim, distance, value: neighborTribonacci });
+                        
+                        coherentAvgSimilarity += coherentSim;
+                        tribonacciAvgSimilarity += tribonacciSim;
+                        count++;
+                    }
+                }
+                
+                return {
+                    center: { x, y, coherentValue, tribonacciValue },
+                    coherent: {
+                        relations: coherentRelations,
+                        avgSimilarity: count > 0 ? coherentAvgSimilarity / count : 0
+                    },
+                    tribonacci: {
+                        relations: tribonacciRelations,
+                        avgSimilarity: count > 0 ? tribonacciAvgSimilarity / count : 0
+                    }
+                };
+            }, [selectedCell, noiseGrids, gridSize, heatmapRadius]);
+
+            const handleCellClick = useCallback((x, y, gridType) => {
+                setSelectedCell(prev => {
+                    if (prev?.x === x && prev?.y === y) return null;
+                    return { x, y, gridType };
+                });
+            }, []);
+
+            const renderGrid = useCallback((gridData, gridType) => {
+                const cellSize = Math.min(320 / gridSize, 20);
+                const padding = 2;
+                
+                return (
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: `repeat(${gridSize}, ${cellSize}px)`,
+                            gap: '1px',
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            padding: '8px',
+                            borderRadius: '8px',
+                            boxShadow: 'inset 0 2px 8px rgba(0, 0, 0, 0.4)',
+                        }}
+                    >
+                        {gridData.map((row, y) =>
+                            row.map((value, x) => {
+                                const isSelected = selectedCell?.x === x && selectedCell?.y === y;
+                                const relation = relationshipData?.[gridType]?.relations.find(r => r.x === x && r.y === y);
+                                const isNeighbor = !!relation;
+                                
+                                let cellStyle = {
+                                    width: cellSize - padding,
+                                    height: cellSize - padding,
+                                    backgroundColor: valueToColor(value, 'terrain'),
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    borderRadius: '2px',
+                                    position: 'relative',
+                                };
+                                
+                                if (isSelected) {
+                                    cellStyle.boxShadow = '0 0 0 2px #fff, 0 0 12px 4px rgba(255, 255, 255, 0.8)';
+                                    cellStyle.zIndex = 10;
+                                    cellStyle.transform = 'scale(1.15)';
+                                } else if (isNeighbor && selectedCell) {
+                                    const glowColor = similarityToGlow(relation.similarity);
+                                    cellStyle.boxShadow = `0 0 ${8 + relation.similarity * 8}px ${glowColor}`;
+                                    cellStyle.opacity = 0.5 + relation.similarity * 0.5;
+                                }
+                                
+                                return (
+                                    <div
+                                        key={`${x}-${y}`}
+                                        style={cellStyle}
+                                        onClick={() => handleCellClick(x, y, gridType)}
+                                        title={`(${x}, ${y}): ${value.toFixed(3)}${relation ? ` | Similarity: ${(relation.similarity * 100).toFixed(1)}%` : ''}`}
+                                    >
+                                        {isNeighbor && showConnections && (
+                                            <div
+                                                style={{
+                                                    position: 'absolute',
+                                                    inset: 0,
+                                                    background: similarityToGlow(relation.similarity),
+                                                    borderRadius: '2px',
+                                                    pointerEvents: 'none',
+                                                }}
+                                            />
+                                        )}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                );
+            }, [selectedCell, relationshipData, showConnections, gridSize, handleCellClick]);
+
+            const renderStatsPanel = () => {
+                if (!relationshipData) {
+                    return (
+                        <div style={{
+                            padding: '20px',
+                            background: 'rgba(0, 0, 0, 0.4)',
+                            borderRadius: '12px',
+                            textAlign: 'center',
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            fontStyle: 'italic',
+                        }}>
+                            Click any cell to analyze neighbor relationships
+                        </div>
+                    );
+                }
+                
+                const { center, coherent, tribonacci } = relationshipData;
+                const coherenceAdvantage = ((coherent.avgSimilarity - tribonacci.avgSimilarity) * 100).toFixed(1);
+                
+                return (
+                    <div style={{ display: 'grid', gap: '16px' }}>
+                        {/* Selected Cell Info */}
+                        <div style={{
+                            padding: '16px',
+                            background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                            borderRadius: '12px',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                        }}>
+                            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>
+                                Selected Cell
+                            </div>
+                            <div style={{ fontSize: '24px', fontWeight: '700', fontFamily: "'JetBrains Mono', monospace" }}>
+                                ({center.x}, {center.y})
+                            </div>
+                            <div style={{ display: 'flex', gap: '16px', marginTop: '12px' }}>
+                                <div>
+                                    <div style={{ fontSize: '10px', color: 'rgba(100, 220, 180, 0.8)' }}>COHERENT</div>
+                                    <div style={{ fontFamily: 'monospace', fontSize: '14px' }}>{center.coherentValue.toFixed(4)}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '10px', color: 'rgba(255, 150, 100, 0.8)' }}>TRIBONACCI</div>
+                                    <div style={{ fontFamily: 'monospace', fontSize: '14px' }}>{center.tribonacciValue.toFixed(4)}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Coherence Comparison */}
+                        <div style={{
+                            padding: '16px',
+                            background: parseFloat(coherenceAdvantage) > 0 
+                                ? 'linear-gradient(135deg, rgba(100, 220, 180, 0.15) 0%, rgba(100, 220, 180, 0.05) 100%)'
+                                : 'linear-gradient(135deg, rgba(255, 150, 100, 0.15) 0%, rgba(255, 150, 100, 0.05) 100%)',
+                            borderRadius: '12px',
+                            border: `1px solid ${parseFloat(coherenceAdvantage) > 0 ? 'rgba(100, 220, 180, 0.3)' : 'rgba(255, 150, 100, 0.3)'}`,
+                        }}>
+                            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>
+                                Spatial Coherence Advantage
+                            </div>
+                            <div style={{ 
+                                fontSize: '32px', 
+                                fontWeight: '800',
+                                fontFamily: "'JetBrains Mono', monospace",
+                                color: parseFloat(coherenceAdvantage) > 0 ? '#64dcb4' : '#ff9664',
+                            }}>
+                                {parseFloat(coherenceAdvantage) > 0 ? '+' : ''}{coherenceAdvantage}%
+                            </div>
+                            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '4px' }}>
+                                Average similarity to {coherent.relations.length} neighbors
+                            </div>
+                        </div>
+                        
+                        {/* Detailed Comparison */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div style={{
+                                padding: '14px',
+                                background: 'rgba(100, 220, 180, 0.1)',
+                                borderRadius: '10px',
+                                border: '1px solid rgba(100, 220, 180, 0.2)',
+                            }}>
+                                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(100, 220, 180, 0.8)', marginBottom: '6px' }}>
+                                    Coherent Noise
+                                </div>
+                                <div style={{ fontSize: '20px', fontWeight: '700', fontFamily: "'JetBrains Mono', monospace", color: '#64dcb4' }}>
+                                    {(coherent.avgSimilarity * 100).toFixed(1)}%
+                                </div>
+                                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)' }}>avg similarity</div>
+                                <div style={{ display: 'flex', gap: '2px', marginTop: '8px', height: '30px', alignItems: 'flex-end' }}>
+                                    {coherent.relations.slice(0, 8).map((r, i) => (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                flex: 1,
+                                                height: `${r.similarity * 100}%`,
+                                                background: 'linear-gradient(to top, rgba(100, 220, 180, 0.8), rgba(100, 220, 180, 0.3))',
+                                                borderRadius: '2px 2px 0 0',
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <div style={{
+                                padding: '14px',
+                                background: 'rgba(255, 150, 100, 0.1)',
+                                borderRadius: '10px',
+                                border: '1px solid rgba(255, 150, 100, 0.2)',
+                            }}>
+                                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255, 150, 100, 0.8)', marginBottom: '6px' }}>
+                                    Tribonacci-Style
+                                </div>
+                                <div style={{ fontSize: '20px', fontWeight: '700', fontFamily: "'JetBrains Mono', monospace", color: '#ff9664' }}>
+                                    {(tribonacci.avgSimilarity * 100).toFixed(1)}%
+                                </div>
+                                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)' }}>avg similarity</div>
+                                <div style={{ display: 'flex', gap: '2px', marginTop: '8px', height: '30px', alignItems: 'flex-end' }}>
+                                    {tribonacci.relations.slice(0, 8).map((r, i) => (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                flex: 1,
+                                                height: `${r.similarity * 100}%`,
+                                                background: 'linear-gradient(to top, rgba(255, 150, 100, 0.8), rgba(255, 150, 100, 0.3))',
+                                                borderRadius: '2px 2px 0 0',
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Relationship List */}
+                        <div style={{
+                            maxHeight: '200px',
+                            overflow: 'auto',
+                            padding: '12px',
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            borderRadius: '8px',
+                            fontSize: '11px',
+                            fontFamily: "'JetBrains Mono', monospace",
+                        }}>
+                            <div style={{ 
+                                display: 'grid', 
+                                gridTemplateColumns: 'auto 1fr 1fr 1fr',
+                                gap: '4px 12px',
+                                color: 'rgba(255,255,255,0.5)',
+                                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                                paddingBottom: '6px',
+                                marginBottom: '6px',
+                            }}>
+                                <span>Pos</span>
+                                <span>Dist</span>
+                                <span style={{ color: 'rgba(100, 220, 180, 0.8)' }}>Coh%</span>
+                                <span style={{ color: 'rgba(255, 150, 100, 0.8)' }}>Tri%</span>
+                            </div>
+                            {coherent.relations.map((r, i) => (
+                                <div
+                                    key={i}
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'auto 1fr 1fr 1fr',
+                                        gap: '4px 12px',
+                                        padding: '3px 0',
+                                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                    }}
+                                >
+                                    <span style={{ color: 'rgba(255,255,255,0.7)' }}>({r.x},{r.y})</span>
+                                    <span style={{ color: 'rgba(255,255,255,0.4)' }}>{r.distance.toFixed(1)}</span>
+                                    <span style={{ color: '#64dcb4' }}>{(r.similarity * 100).toFixed(0)}</span>
+                                    <span style={{ color: '#ff9664' }}>{(tribonacci.relations[i]?.similarity * 100 || 0).toFixed(0)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            const controlStyle = { display: 'flex', flexDirection: 'column', gap: '4px' };
+            const labelStyle = { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.5)' };
+            const valueStyle = { fontSize: '13px', fontFamily: "'JetBrains Mono', monospace", color: 'rgba(255,255,255,0.9)' };
+
+            return (
+                <div style={{
+                    minHeight: '100vh',
+                    background: 'linear-gradient(145deg, #0a0a12 0%, #12121f 50%, #0d0d18 100%)',
+                    color: '#fff',
+                    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+                    padding: '24px',
+                }}>
+                    {/* Header */}
+                    <div style={{ maxWidth: '1200px', margin: '0 auto 32px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                background: 'linear-gradient(135deg, #64dcb4 0%, #4a9d8c 100%)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '16px',
+                            }}>
+                                ◈
+                            </div>
+                            <h1 style={{
+                                fontSize: '28px',
+                                fontWeight: '700',
+                                margin: 0,
+                                background: 'linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                            }}>
+                                Neighbor Relationship Map
+                            </h1>
+                        </div>
+                        <p style={{
+                            fontSize: '14px',
+                            color: 'rgba(255,255,255,0.5)',
+                            margin: 0,
+                            maxWidth: '600px',
+                        }}>
+                            Demonstrating spatial coherence through coherent noise. Click any cell to visualize 
+                            mathematical relationship scores with adjacent cells — comparing gradient continuity 
+                            vs Tribonacci's inherent discontinuity.
+                        </p>
+                    </div>
+                    
+                    {/* Main Content */}
+                    <div style={{
+                        maxWidth: '1200px',
+                        margin: '0 auto',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 350px',
+                        gap: '24px',
+                    }}>
+                        {/* Grids Section */}
+                        <div>
+                            {/* Controls Bar */}
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                                gap: '16px',
+                                padding: '16px',
+                                background: 'rgba(255,255,255,0.03)',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                marginBottom: '20px',
+                            }}>
+                                <div style={controlStyle}>
+                                    <label style={labelStyle}>Seed</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input type="range" min="1" max="9999" value={seed} onChange={(e) => setSeed(parseInt(e.target.value))} />
+                                        <span style={valueStyle}>{seed}</span>
+                                    </div>
+                                </div>
+                                
+                                <div style={controlStyle}>
+                                    <label style={labelStyle}>Grid Size</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input type="range" min="10" max="32" value={gridSize} onChange={(e) => setGridSize(parseInt(e.target.value))} />
+                                        <span style={valueStyle}>{gridSize}×{gridSize}</span>
+                                    </div>
+                                </div>
+                                
+                                <div style={controlStyle}>
+                                    <label style={labelStyle}>Noise Scale</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input type="range" min="5" max="50" value={noiseScale * 100} onChange={(e) => setNoiseScale(parseInt(e.target.value) / 100)} />
+                                        <span style={valueStyle}>{noiseScale.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                                
+                                <div style={controlStyle}>
+                                    <label style={labelStyle}>Octaves</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input type="range" min="1" max="8" value={octaves} onChange={(e) => setOctaves(parseInt(e.target.value))} />
+                                        <span style={valueStyle}>{octaves}</span>
+                                    </div>
+                                </div>
+                                
+                                <div style={controlStyle}>
+                                    <label style={labelStyle}>Heatmap Radius</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input type="range" min="1" max="6" value={heatmapRadius} onChange={(e) => setHeatmapRadius(parseInt(e.target.value))} />
+                                        <span style={valueStyle}>{heatmapRadius}</span>
+                                    </div>
+                                </div>
+                                
+                                <div style={controlStyle}>
+                                    <label style={labelStyle}>Show Glow</label>
+                                    <button
+                                        onClick={() => setShowConnections(!showConnections)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid rgba(255,255,255,0.2)',
+                                            background: showConnections ? 'rgba(100, 220, 180, 0.2)' : 'rgba(255,255,255,0.05)',
+                                            color: showConnections ? '#64dcb4' : 'rgba(255,255,255,0.6)',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            fontWeight: '500',
+                                        }}
+                                    >
+                                        {showConnections ? 'ON' : 'OFF'}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {/* Grid Comparison */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                {/* Coherent Noise Grid */}
+                                <div style={{
+                                    background: 'rgba(100, 220, 180, 0.05)',
+                                    borderRadius: '16px',
+                                    padding: '16px',
+                                    border: '1px solid rgba(100, 220, 180, 0.15)',
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                        <div>
+                                            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#64dcb4' }}>
+                                                Coherent Noise (Simplex fBm)
+                                            </h3>
+                                            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+                                                Smooth spatial gradients • Neighbors are mathematically related
+                                            </p>
+                                        </div>
+                                        <div style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '12px',
+                                            background: 'rgba(100, 220, 180, 0.2)',
+                                            fontSize: '10px',
+                                            fontWeight: '600',
+                                            color: '#64dcb4',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                        }}>
+                                            C² Continuous
+                                        </div>
+                                    </div>
+                                    {renderGrid(noiseGrids.coherent, 'coherent')}
+                                </div>
+                                
+                                {/* Tribonacci-Style Grid */}
+                                <div style={{
+                                    background: 'rgba(255, 150, 100, 0.05)',
+                                    borderRadius: '16px',
+                                    padding: '16px',
+                                    border: '1px solid rgba(255, 150, 100, 0.15)',
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                        <div>
+                                            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#ff9664' }}>
+                                                Tribonacci-Style (White Noise)
+                                            </h3>
+                                            <p style={{ margin: '4px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+                                                No spatial coherence • Adjacent cells are statistically independent
+                                            </p>
+                                        </div>
+                                        <div style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '12px',
+                                            background: 'rgba(255, 150, 100, 0.2)',
+                                            fontSize: '10px',
+                                            fontWeight: '600',
+                                            color: '#ff9664',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px',
+                                        }}>
+                                            Discontinuous
+                                        </div>
+                                    </div>
+                                    {renderGrid(noiseGrids.tribonacci, 'tribonacci')}
+                                </div>
+                            </div>
+                            
+                            {/* Legend */}
+                            <div style={{
+                                marginTop: '16px',
+                                padding: '12px 16px',
+                                background: 'rgba(255,255,255,0.03)',
+                                borderRadius: '10px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '12px',
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: valueToColor(0.2, 'terrain') }} />
+                                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>Deep</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: valueToColor(0.5, 'terrain') }} />
+                                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>Mid</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: valueToColor(0.9, 'terrain') }} />
+                                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>High</span>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'rgba(255, 80, 80, 0.6)', boxShadow: '0 0 6px rgba(255, 80, 80, 0.8)' }} />
+                                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>Low Similarity</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'rgba(80, 255, 80, 0.6)', boxShadow: '0 0 6px rgba(80, 255, 80, 0.8)' }} />
+                                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>High Similarity</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Stats Panel */}
+                        <div style={{
+                            background: 'rgba(255,255,255,0.03)',
+                            borderRadius: '16px',
+                            padding: '20px',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            height: 'fit-content',
+                        }}>
+                            <h2 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '600', color: 'rgba(255,255,255,0.9)' }}>
+                                Relationship Analysis
+                            </h2>
+                            {renderStatsPanel()}
+                            
+                            {/* Key Insight */}
+                            <div style={{
+                                marginTop: '20px',
+                                padding: '16px',
+                                background: 'linear-gradient(135deg, rgba(100, 220, 180, 0.08) 0%, rgba(255, 150, 100, 0.08) 100%)',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                            }}>
+                                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.4)', marginBottom: '8px' }}>
+                                    Key Insight
+                                </div>
+                                <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.6', color: 'rgba(255,255,255,0.7)' }}>
+                                    Coherent noise maintains <strong style={{ color: '#64dcb4' }}>gradient continuity</strong> — 
+                                    neighbors share mathematical kinship. Tribonacci-style generation produces 
+                                    <strong style={{ color: '#ff9664' }}> statistical independence</strong> — 
+                                    adjacent cells are unrelated, preventing meaningful regional variation.
+                                </p>
+                            </div>
+                            
+                            {/* Technical Details */}
+                            <div style={{
+                                marginTop: '16px',
+                                padding: '12px',
+                                background: 'rgba(0, 0, 0, 0.3)',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                fontFamily: "'JetBrains Mono', monospace",
+                                color: 'rgba(255,255,255,0.5)',
+                            }}>
+                                <div style={{ marginBottom: '4px' }}>
+                                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>// Generation params</span>
+                                </div>
+                                <div>seed: <span style={{ color: '#64dcb4' }}>{seed}</span></div>
+                                <div>scale: <span style={{ color: '#64dcb4' }}>{noiseScale}</span></div>
+                                <div>octaves: <span style={{ color: '#64dcb4' }}>{octaves}</span></div>
+                                <div>persistence: <span style={{ color: '#64dcb4' }}>0.5</span></div>
+                                <div>lacunarity: <span style={{ color: '#64dcb4' }}>2.0</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Footer */}
+                    <div style={{
+                        maxWidth: '1200px',
+                        margin: '32px auto 0',
+                        padding: '16px 0',
+                        borderTop: '1px solid rgba(255,255,255,0.08)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '11px',
+                        color: 'rgba(255,255,255,0.3)',
+                    }}>
+                        <span>Demo 09 • Beyond Tribonacci: Endless Worlds Methodology</span>
+                        <span>Position is Seed • O(1) Random Access • Infinite Determinism</span>
+                    </div>
+                </div>
+            );
+        }
+
+        // Mount the application
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<NeighborRelationshipMap />);
+    </script>
+</body>
+</html>
