@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instant Coordinate Jumper | Beyond Tribonacci Demo</title>
+    <meta name="description" content="O(1) random access demonstration for infinite procedural world generation using the position-is-seed paradigm">
+    
+    <!-- React from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body, #root {
+            width: 100%;
+            min-height: 100vh;
+            background: #0a0a12;
+        }
+        
+        /* Loading state */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: #4ECDC4;
+            font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+            gap: 16px;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(78, 205, 196, 0.2);
+            border-top-color: #4ECDC4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #12121f;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #4ECDC444;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4ECDC4;
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <div>Initializing Coordinate Jumper...</div>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PURE HASH FUNCTIONS - Position is Seed
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        // SplitMix64-inspired hash for 64-bit quality from coordinates
+        function coordHash(x, y, z, salt = 0) {
+            // Handle BigInt or regular numbers
+            const bx = typeof x === 'bigint' ? x : BigInt(Math.floor(x));
+            const by = typeof y === 'bigint' ? y : BigInt(Math.floor(y));
+            const bz = typeof z === 'bigint' ? z : BigInt(Math.floor(z));
+            const bs = BigInt(salt);
+            
+            // Combine coordinates with golden ratio-derived constants
+            let h = bx * 0x9E3779B97F4A7C15n;
+            h ^= by * 0x85EBCA6B2F40C2F5n;
+            h ^= bz * 0xC2B2AE3D27D4EB4Fn;
+            h ^= bs * 0x165667B19E3779F9n;
+            
+            // SplitMix64 finalizer
+            h ^= h >> 30n;
+            h *= 0xBF58476D1CE4E5B9n;
+            h ^= h >> 27n;
+            h *= 0x94D049BB133111EBn;
+            h ^= h >> 31n;
+            
+            // Mask to 53-bit safe integer
+            return Number(h & 0x1FFFFFFFFFFFFFn);
+        }
+
+        // Convert hash to float [0, 1)
+        function hashToFloat(hash) {
+            return (hash % 0x1FFFFF) / 0x1FFFFF;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // STAR SYSTEM GENERATOR - Pure function of coordinates
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        const STAR_CLASSES = [
+            { name: 'O', color: '#9BB0FF', temp: '30,000-50,000K', rarity: 0.00003 },
+            { name: 'B', color: '#AABFFF', temp: '10,000-30,000K', rarity: 0.0013 },
+            { name: 'A', color: '#CAD7FF', temp: '7,500-10,000K', rarity: 0.006 },
+            { name: 'F', color: '#F8F7FF', temp: '6,000-7,500K', rarity: 0.03 },
+            { name: 'G', color: '#FFF4EA', temp: '5,200-6,000K', rarity: 0.076 },
+            { name: 'K', color: '#FFD2A1', temp: '3,700-5,200K', rarity: 0.121 },
+            { name: 'M', color: '#FFCC6F', temp: '2,400-3,700K', rarity: 0.765 },
+        ];
+
+        const PLANET_TYPES = [
+            { name: 'Gas Giant', icon: '🪐', color: '#E8A87C' },
+            { name: 'Ice Giant', icon: '🧊', color: '#81D4FA' },
+            { name: 'Rocky', icon: '🌑', color: '#9E9E9E' },
+            { name: 'Earth-like', icon: '🌍', color: '#4CAF50' },
+            { name: 'Ocean', icon: '🌊', color: '#2196F3' },
+            { name: 'Desert', icon: '🏜️', color: '#FFB74D' },
+            { name: 'Volcanic', icon: '🌋', color: '#FF5722' },
+        ];
+
+        function generateStarSystem(x, y, z, universeSeed = 42) {
+            const systemSeed = coordHash(x, y, z, universeSeed);
+            
+            // Star class (weighted by rarity)
+            const classRoll = hashToFloat(coordHash(x, y, z, 1));
+            let cumulative = 0;
+            let starClass = STAR_CLASSES[6]; // Default M
+            for (const sc of STAR_CLASSES) {
+                cumulative += sc.rarity;
+                if (classRoll < cumulative) {
+                    starClass = sc;
+                    break;
+                }
+            }
+            
+            // Star properties
+            const starMass = 0.08 + hashToFloat(coordHash(x, y, z, 2)) * 49.92;
+            const starLuminosity = Math.pow(starMass, 3.5);
+            const starAge = 0.1 + hashToFloat(coordHash(x, y, z, 3)) * 12.9;
+            
+            // Planet count (0-12)
+            const planetCount = Math.floor(hashToFloat(coordHash(x, y, z, 4)) * 13);
+            
+            // Generate planets
+            const planets = [];
+            for (let i = 0; i < planetCount; i++) {
+                const planetSeed = coordHash(x, y, z, 100 + i);
+                const typeRoll = hashToFloat(planetSeed);
+                const typeIndex = Math.floor(typeRoll * PLANET_TYPES.length);
+                const orbitalRadius = 0.4 + 0.3 * Math.pow(2, i) * (0.7 + 0.6 * hashToFloat(planetSeed + 1));
+                const hasMoons = hashToFloat(planetSeed + 2) < 0.4;
+                const moonCount = hasMoons ? Math.floor(hashToFloat(planetSeed + 3) * 8) : 0;
+                
+                planets.push({
+                    type: PLANET_TYPES[typeIndex],
+                    orbitalRadius: orbitalRadius.toFixed(2),
+                    moons: moonCount,
+                });
+            }
+            
+            // System name from hash
+            const nameParts = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa'];
+            const suffixes = ['Prime', 'Major', 'Minor', 'Proxima', 'Ultima', 'Nova', 'Centauri', 'Reticuli'];
+            const namePart1 = nameParts[Math.floor(hashToFloat(coordHash(x, y, z, 5)) * nameParts.length)];
+            const namePart2 = suffixes[Math.floor(hashToFloat(coordHash(x, y, z, 6)) * suffixes.length)];
+            const nameNum = Math.floor(hashToFloat(coordHash(x, y, z, 7)) * 9999);
+            
+            return {
+                seed: systemSeed,
+                name: `${namePart1} ${namePart2}-${nameNum}`,
+                star: {
+                    class: starClass,
+                    mass: starMass.toFixed(2),
+                    luminosity: starLuminosity.toFixed(2),
+                    age: starAge.toFixed(1),
+                },
+                planets,
+                coordinates: { x, y, z },
+            };
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // TRIBONACCI ITERATION SIMULATOR (for comparison)
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        function calculateTribonacciIterations(x, y, z) {
+            const bx = typeof x === 'bigint' ? x : BigInt(Math.abs(Math.floor(x)));
+            const by = typeof y === 'bigint' ? y : BigInt(Math.abs(Math.floor(y)));
+            const bz = typeof z === 'bigint' ? z : BigInt(Math.abs(Math.floor(z)));
+            const linearIndex = bx + by * 10000n + bz * 100000000n;
+            return linearIndex * 4n;
+        }
+
+        function formatBigNumber(n) {
+            if (typeof n !== 'bigint') n = BigInt(n);
+            if (n < 1000n) return n.toString();
+            if (n < 1000000n) return (Number(n) / 1000).toFixed(1) + 'K';
+            if (n < 1000000000n) return (Number(n) / 1000000).toFixed(2) + 'M';
+            if (n < 1000000000000n) return (Number(n) / 1000000000).toFixed(2) + 'B';
+            if (n < 1000000000000000n) return (Number(n) / 1000000000000).toFixed(2) + 'T';
+            if (n < 1000000000000000000n) return (Number(n) / 1000000000000000).toFixed(2) + 'Q';
+            const str = n.toString();
+            const exp = str.length - 1;
+            return str[0] + '.' + str.slice(1, 4) + '×10^' + exp;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // REACT COMPONENT
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        function InstantCoordinateJumper() {
+            const [coords, setCoords] = useState({ x: '1000', y: '500', z: '250' });
+            const [system, setSystem] = useState(null);
+            const [iterationsSaved, setIterationsSaved] = useState(0n);
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [generationTime, setGenerationTime] = useState(0);
+            const [showComparison, setShowComparison] = useState(false);
+            const [presets] = useState([
+                { name: 'Local Star', x: '10', y: '5', z: '3' },
+                { name: 'Distant System', x: '999999', y: '888888', z: '777777' },
+                { name: 'Edge of Galaxy', x: '1000000000000', y: '500000000000', z: '250000000000' },
+                { name: 'Extreme (10^15)', x: '1000000000000000', y: '999999999999999', z: '888888888888888' },
+                { name: 'Maximum Safe', x: '9007199254740991', y: '9007199254740991', z: '9007199254740991' },
+            ]);
+            
+            const generateSystem = useCallback(() => {
+                setIsGenerating(true);
+                
+                requestAnimationFrame(() => {
+                    const startTime = performance.now();
+                    
+                    let x, y, z;
+                    try {
+                        x = BigInt(coords.x || '0');
+                        y = BigInt(coords.y || '0');
+                        z = BigInt(coords.z || '0');
+                    } catch {
+                        x = BigInt(0);
+                        y = BigInt(0);
+                        z = BigInt(0);
+                    }
+                    
+                    const newSystem = generateStarSystem(x, y, z);
+                    const endTime = performance.now();
+                    
+                    const tribIterations = calculateTribonacciIterations(x, y, z);
+                    
+                    setSystem(newSystem);
+                    setIterationsSaved(tribIterations);
+                    setGenerationTime((endTime - startTime).toFixed(3));
+                    setIsGenerating(false);
+                });
+            }, [coords]);
+            
+            useEffect(() => {
+                generateSystem();
+            }, []);
+            
+            const handleCoordChange = (axis, value) => {
+                const cleaned = value.replace(/[^0-9-]/g, '');
+                setCoords(prev => ({ ...prev, [axis]: cleaned }));
+            };
+            
+            const applyPreset = (preset) => {
+                setCoords({ x: preset.x, y: preset.y, z: preset.z });
+            };
+            
+            return (
+                <div style={styles.container}>
+                    <div style={styles.gridOverlay} />
+                    <div style={styles.scanline} />
+                    
+                    <header style={styles.header}>
+                        <div style={styles.titleSection}>
+                            <h1 style={styles.title}>
+                                <span style={styles.titleAccent}>⚡</span> INSTANT COORDINATE JUMPER
+                            </h1>
+                            <p style={styles.subtitle}>O(1) Random Access to Infinite Space</p>
+                        </div>
+                        <div style={styles.badge}>
+                            <span style={styles.badgeText}>ZERO ITERATIONS</span>
+                        </div>
+                    </header>
+                    
+                    <div style={styles.mainGrid}>
+                        <section style={styles.inputPanel}>
+                            <h2 style={styles.panelTitle}>
+                                <span style={styles.icon}>📍</span> COORDINATES
+                            </h2>
+                            
+                            <div style={styles.coordInputs}>
+                                {['x', 'y', 'z'].map((axis) => (
+                                    <div key={axis} style={styles.coordRow}>
+                                        <label style={{
+                                            ...styles.coordLabel,
+                                            color: axis === 'x' ? '#FF6B6B' : axis === 'y' ? '#4ECDC4' : '#FFE66D'
+                                        }}>
+                                            {axis.toUpperCase()}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={coords[axis]}
+                                            onChange={(e) => handleCoordChange(axis, e.target.value)}
+                                            style={styles.coordInput}
+                                            placeholder="Enter coordinate..."
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div style={styles.presets}>
+                                <span style={styles.presetsLabel}>Quick Jump:</span>
+                                <div style={styles.presetButtons}>
+                                    {presets.map((preset, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => applyPreset(preset)}
+                                            style={styles.presetBtn}
+                                        >
+                                            {preset.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            <button
+                                onClick={generateSystem}
+                                style={{
+                                    ...styles.generateBtn,
+                                    opacity: isGenerating ? 0.7 : 1,
+                                }}
+                                disabled={isGenerating}
+                            >
+                                {isGenerating ? '⟳ GENERATING...' : '⚡ INSTANT JUMP'}
+                            </button>
+                        </section>
+                        
+                        <section style={styles.resultPanel}>
+                            {system && (
+                                <>
+                                    <div style={styles.systemHeader}>
+                                        <h2 style={styles.systemName}>{system.name}</h2>
+                                        <div style={styles.seedDisplay}>
+                                            SEED: {system.seed.toString(16).toUpperCase().padStart(12, '0')}
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={styles.starSection}>
+                                        <div 
+                                            style={{
+                                                ...styles.starOrb,
+                                                background: `radial-gradient(circle at 30% 30%, ${system.star.class.color}, ${system.star.class.color}88 50%, ${system.star.class.color}22 100%)`,
+                                                boxShadow: `0 0 60px ${system.star.class.color}88, 0 0 120px ${system.star.class.color}44`,
+                                            }}
+                                        >
+                                            <span style={styles.starClass}>{system.star.class.name}</span>
+                                        </div>
+                                        
+                                        <div style={styles.starStats}>
+                                            <div style={styles.statItem}>
+                                                <span style={styles.statLabel}>Class</span>
+                                                <span style={styles.statValue}>{system.star.class.name}-type</span>
+                                            </div>
+                                            <div style={styles.statItem}>
+                                                <span style={styles.statLabel}>Temperature</span>
+                                                <span style={styles.statValue}>{system.star.class.temp}</span>
+                                            </div>
+                                            <div style={styles.statItem}>
+                                                <span style={styles.statLabel}>Mass</span>
+                                                <span style={styles.statValue}>{system.star.mass} M☉</span>
+                                            </div>
+                                            <div style={styles.statItem}>
+                                                <span style={styles.statLabel}>Luminosity</span>
+                                                <span style={styles.statValue}>{system.star.luminosity} L☉</span>
+                                            </div>
+                                            <div style={styles.statItem}>
+                                                <span style={styles.statLabel}>Age</span>
+                                                <span style={styles.statValue}>{system.star.age} Gyr</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style={styles.planetsSection}>
+                                        <h3 style={styles.planetsTitle}>
+                                            {system.planets.length} Orbiting Bodies
+                                        </h3>
+                                        <div style={styles.planetsList}>
+                                            {system.planets.length === 0 ? (
+                                                <div style={styles.noPlanets}>No planets detected</div>
+                                            ) : (
+                                                system.planets.map((planet, i) => (
+                                                    <div key={i} style={styles.planetCard}>
+                                                        <span style={styles.planetIcon}>{planet.type.icon}</span>
+                                                        <div style={styles.planetInfo}>
+                                                            <span style={styles.planetType}>{planet.type.name}</span>
+                                                            <span style={styles.planetOrbit}>{planet.orbitalRadius} AU</span>
+                                                            {planet.moons > 0 && (
+                                                                <span style={styles.planetMoons}>{planet.moons} moon{planet.moons > 1 ? 's' : ''}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </section>
+                        
+                        <section style={styles.comparisonPanel}>
+                            <h2 style={styles.panelTitle}>
+                                <span style={styles.icon}>📊</span> PERFORMANCE
+                            </h2>
+                            
+                            <div style={styles.methodCard}>
+                                <div style={styles.methodHeader}>
+                                    <span style={styles.methodIcon}>⚡</span>
+                                    <span style={styles.methodName}>Hash-Based O(1)</span>
+                                </div>
+                                <div style={styles.methodStats}>
+                                    <div style={styles.bigStat}>
+                                        <span style={styles.bigStatValue}>0</span>
+                                        <span style={styles.bigStatLabel}>iterations</span>
+                                    </div>
+                                    <div style={styles.timeStat}>
+                                        <span style={styles.timeValue}>{generationTime}ms</span>
+                                        <span style={styles.timeLabel}>generation time</span>
+                                    </div>
+                                </div>
+                                <div style={styles.methodBadge}>INSTANT</div>
+                            </div>
+                            
+                            <div style={{...styles.methodCard, ...styles.legacyCard}}>
+                                <div style={styles.methodHeader}>
+                                    <span style={styles.methodIcon}>🐢</span>
+                                    <span style={styles.methodName}>Tribonacci O(n)</span>
+                                </div>
+                                <div style={styles.methodStats}>
+                                    <div style={styles.bigStat}>
+                                        <span style={{...styles.bigStatValue, color: '#FF6B6B'}}>
+                                            {formatBigNumber(iterationsSaved)}
+                                        </span>
+                                        <span style={styles.bigStatLabel}>iterations required</span>
+                                    </div>
+                                    <div style={styles.timeStat}>
+                                        <span style={styles.timeValue}>
+                                            ~{formatBigNumber(iterationsSaved / 180000000n || 0n)}s
+                                        </span>
+                                        <span style={styles.timeLabel}>estimated @ 180M iter/s</span>
+                                    </div>
+                                </div>
+                                <div style={{...styles.methodBadge, background: '#FF6B6B22', color: '#FF6B6B'}}>
+                                    SEQUENTIAL
+                                </div>
+                            </div>
+                            
+                            <div style={styles.savingsCard}>
+                                <div style={styles.savingsTitle}>ITERATIONS SAVED</div>
+                                <div style={styles.savingsValue}>{formatBigNumber(iterationsSaved)}</div>
+                                <div style={styles.savingsSubtext}>
+                                    Position IS the seed — no iteration needed
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={() => setShowComparison(!showComparison)}
+                                style={styles.detailsToggle}
+                            >
+                                {showComparison ? '▼ Hide Details' : '▶ Show Algorithm Details'}
+                            </button>
+                            
+                            {showComparison && (
+                                <div style={styles.comparisonDetails}>
+                                    <div style={styles.codeBlock}>
+                                        <div style={styles.codeTitle}>Hash-Based (Modern)</div>
+                                        <pre style={styles.code}>
+{`properties(x,y,z) = hash(x,y,z,salt)
+// O(1) - constant time
+// Any coordinate, instantly`}
+                                        </pre>
+                                    </div>
+                                    <div style={styles.codeBlock}>
+                                        <div style={styles.codeTitle}>Tribonacci (1984)</div>
+                                        <pre style={styles.code}>
+{`for i in 0..N*4:
+  temp = s0 + s1 + s2
+  s0, s1, s2 = s1, s2, temp
+// O(n) - must iterate to N`}
+                                        </pre>
+                                    </div>
+                                </div>
+                            )}
+                        </section>
+                    </div>
+                    
+                    <footer style={styles.footer}>
+                        <div style={styles.footerText}>
+                            <span style={styles.footerHighlight}>Position-is-Seed Paradigm</span>
+                            <span style={styles.footerDivider}>|</span>
+                            Same coordinates = identical output across all sessions
+                            <span style={styles.footerDivider}>|</span>
+                            Deterministic • Parallel • Infinite
+                        </div>
+                        <div style={{marginTop: '8px', fontSize: '10px', color: '#444'}}>
+                            <a href="https://github.com/MushroomFleet/BEYOND-TRIBONACCI" style={{color: '#4ECDC4', textDecoration: 'none'}}>
+                                GitHub: MushroomFleet/BEYOND-TRIBONACCI
+                            </a>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // STYLES
+        // ═══════════════════════════════════════════════════════════════════════════
+
+        const styles = {
+            container: {
+                minHeight: '100vh',
+                background: 'linear-gradient(135deg, #0a0a12 0%, #12121f 50%, #0a0a12 100%)',
+                color: '#E0E0E0',
+                fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
+                padding: '24px',
+                position: 'relative',
+                overflow: 'hidden',
+            },
+            
+            gridOverlay: {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundImage: `
+                    linear-gradient(rgba(78, 205, 196, 0.03) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(78, 205, 196, 0.03) 1px, transparent 1px)
+                `,
+                backgroundSize: '50px 50px',
+                pointerEvents: 'none',
+            },
+            
+            scanline: {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px)',
+                pointerEvents: 'none',
+                opacity: 0.3,
+            },
+            
+            header: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '24px',
+                paddingBottom: '16px',
+                borderBottom: '1px solid rgba(78, 205, 196, 0.2)',
+                flexWrap: 'wrap',
+                gap: '16px',
+            },
+            
+            titleSection: {},
+            
+            title: {
+                fontSize: 'clamp(18px, 4vw, 28px)',
+                fontWeight: '700',
+                margin: 0,
+                background: 'linear-gradient(135deg, #4ECDC4, #44A08D)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                letterSpacing: '2px',
+            },
+            
+            titleAccent: {
+                WebkitTextFillColor: '#FFE66D',
+            },
+            
+            subtitle: {
+                fontSize: '14px',
+                color: '#888',
+                margin: '4px 0 0 0',
+                letterSpacing: '1px',
+            },
+            
+            badge: {
+                background: 'linear-gradient(135deg, #4ECDC422, #44A08D22)',
+                border: '1px solid #4ECDC4',
+                borderRadius: '4px',
+                padding: '8px 16px',
+            },
+            
+            badgeText: {
+                color: '#4ECDC4',
+                fontSize: '12px',
+                fontWeight: '600',
+                letterSpacing: '2px',
+            },
+            
+            mainGrid: {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '24px',
+                minHeight: 'calc(100vh - 220px)',
+            },
+            
+            inputPanel: {
+                background: 'rgba(20, 20, 35, 0.8)',
+                borderRadius: '12px',
+                padding: '20px',
+                border: '1px solid rgba(78, 205, 196, 0.15)',
+            },
+            
+            panelTitle: {
+                fontSize: '14px',
+                fontWeight: '600',
+                color: '#4ECDC4',
+                marginBottom: '20px',
+                letterSpacing: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+            },
+            
+            icon: {
+                fontSize: '16px',
+            },
+            
+            coordInputs: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                marginBottom: '20px',
+            },
+            
+            coordRow: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+            },
+            
+            coordLabel: {
+                width: '24px',
+                fontSize: '16px',
+                fontWeight: '700',
+                textAlign: 'center',
+            },
+            
+            coordInput: {
+                flex: 1,
+                background: 'rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                padding: '12px',
+                color: '#FFF',
+                fontSize: '14px',
+                fontFamily: 'inherit',
+                outline: 'none',
+                transition: 'border-color 0.2s, box-shadow 0.2s',
+            },
+            
+            presets: {
+                marginBottom: '20px',
+            },
+            
+            presetsLabel: {
+                fontSize: '11px',
+                color: '#666',
+                letterSpacing: '1px',
+                display: 'block',
+                marginBottom: '8px',
+            },
+            
+            presetButtons: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+            },
+            
+            presetBtn: {
+                background: 'rgba(78, 205, 196, 0.1)',
+                border: '1px solid rgba(78, 205, 196, 0.2)',
+                borderRadius: '4px',
+                padding: '8px 12px',
+                color: '#4ECDC4',
+                fontSize: '11px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                textAlign: 'left',
+                fontFamily: 'inherit',
+            },
+            
+            generateBtn: {
+                width: '100%',
+                background: 'linear-gradient(135deg, #4ECDC4, #44A08D)',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '16px',
+                color: '#000',
+                fontSize: '14px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                letterSpacing: '2px',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+                fontFamily: 'inherit',
+            },
+            
+            resultPanel: {
+                background: 'rgba(20, 20, 35, 0.8)',
+                borderRadius: '12px',
+                padding: '24px',
+                border: '1px solid rgba(78, 205, 196, 0.15)',
+                display: 'flex',
+                flexDirection: 'column',
+            },
+            
+            systemHeader: {
+                textAlign: 'center',
+                marginBottom: '24px',
+            },
+            
+            systemName: {
+                fontSize: '24px',
+                fontWeight: '700',
+                color: '#FFF',
+                margin: '0 0 8px 0',
+                letterSpacing: '2px',
+            },
+            
+            seedDisplay: {
+                fontSize: '11px',
+                color: '#666',
+                fontFamily: 'inherit',
+                letterSpacing: '1px',
+            },
+            
+            starSection: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: '24px',
+                marginBottom: '24px',
+                padding: '20px',
+                background: 'rgba(0, 0, 0, 0.3)',
+                borderRadius: '12px',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+            },
+            
+            starOrb: {
+                width: '100px',
+                height: '100px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                animation: 'pulse 4s ease-in-out infinite',
+            },
+            
+            starClass: {
+                fontSize: '28px',
+                fontWeight: '700',
+                color: 'rgba(0, 0, 0, 0.7)',
+                textShadow: '0 0 10px rgba(255,255,255,0.5)',
+            },
+            
+            starStats: {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '12px',
+                flex: 1,
+                minWidth: '200px',
+            },
+            
+            statItem: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+            },
+            
+            statLabel: {
+                fontSize: '10px',
+                color: '#666',
+                letterSpacing: '1px',
+                textTransform: 'uppercase',
+            },
+            
+            statValue: {
+                fontSize: '14px',
+                color: '#FFF',
+                fontWeight: '500',
+            },
+            
+            planetsSection: {
+                flex: 1,
+            },
+            
+            planetsTitle: {
+                fontSize: '12px',
+                color: '#888',
+                marginBottom: '12px',
+                letterSpacing: '1px',
+            },
+            
+            planetsList: {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                gap: '10px',
+            },
+            
+            noPlanets: {
+                color: '#555',
+                fontStyle: 'italic',
+                padding: '20px',
+                textAlign: 'center',
+            },
+            
+            planetCard: {
+                background: 'rgba(0, 0, 0, 0.3)',
+                borderRadius: '8px',
+                padding: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+            },
+            
+            planetIcon: {
+                fontSize: '24px',
+            },
+            
+            planetInfo: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+            },
+            
+            planetType: {
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#FFF',
+            },
+            
+            planetOrbit: {
+                fontSize: '10px',
+                color: '#888',
+            },
+            
+            planetMoons: {
+                fontSize: '10px',
+                color: '#4ECDC4',
+            },
+            
+            comparisonPanel: {
+                background: 'rgba(20, 20, 35, 0.8)',
+                borderRadius: '12px',
+                padding: '20px',
+                border: '1px solid rgba(78, 205, 196, 0.15)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+            },
+            
+            methodCard: {
+                background: 'rgba(78, 205, 196, 0.05)',
+                borderRadius: '8px',
+                padding: '16px',
+                border: '1px solid rgba(78, 205, 196, 0.2)',
+                position: 'relative',
+            },
+            
+            legacyCard: {
+                background: 'rgba(255, 107, 107, 0.05)',
+                borderColor: 'rgba(255, 107, 107, 0.2)',
+            },
+            
+            methodHeader: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '12px',
+            },
+            
+            methodIcon: {
+                fontSize: '18px',
+            },
+            
+            methodName: {
+                fontSize: '12px',
+                fontWeight: '600',
+                letterSpacing: '1px',
+            },
+            
+            methodStats: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+            },
+            
+            bigStat: {
+                display: 'flex',
+                flexDirection: 'column',
+            },
+            
+            bigStatValue: {
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#4ECDC4',
+                lineHeight: 1,
+            },
+            
+            bigStatLabel: {
+                fontSize: '10px',
+                color: '#666',
+                letterSpacing: '1px',
+            },
+            
+            timeStat: {
+                display: 'flex',
+                flexDirection: 'column',
+            },
+            
+            timeValue: {
+                fontSize: '14px',
+                color: '#888',
+            },
+            
+            timeLabel: {
+                fontSize: '9px',
+                color: '#555',
+                letterSpacing: '0.5px',
+            },
+            
+            methodBadge: {
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                background: 'rgba(78, 205, 196, 0.2)',
+                color: '#4ECDC4',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                fontSize: '9px',
+                fontWeight: '600',
+                letterSpacing: '1px',
+            },
+            
+            savingsCard: {
+                background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(68, 160, 141, 0.1))',
+                borderRadius: '8px',
+                padding: '20px',
+                textAlign: 'center',
+                border: '1px solid rgba(78, 205, 196, 0.3)',
+            },
+            
+            savingsTitle: {
+                fontSize: '10px',
+                color: '#4ECDC4',
+                letterSpacing: '2px',
+                marginBottom: '8px',
+            },
+            
+            savingsValue: {
+                fontSize: '28px',
+                fontWeight: '700',
+                color: '#FFE66D',
+                lineHeight: 1.2,
+                wordBreak: 'break-all',
+            },
+            
+            savingsSubtext: {
+                fontSize: '11px',
+                color: '#666',
+                marginTop: '8px',
+                fontStyle: 'italic',
+            },
+            
+            detailsToggle: {
+                background: 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '4px',
+                padding: '10px',
+                color: '#888',
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'all 0.2s',
+            },
+            
+            comparisonDetails: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+            },
+            
+            codeBlock: {
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '6px',
+                overflow: 'hidden',
+            },
+            
+            codeTitle: {
+                fontSize: '10px',
+                color: '#888',
+                padding: '8px 12px',
+                background: 'rgba(0, 0, 0, 0.3)',
+                letterSpacing: '1px',
+            },
+            
+            code: {
+                margin: 0,
+                padding: '12px',
+                fontSize: '11px',
+                lineHeight: 1.5,
+                color: '#AAA',
+                overflow: 'auto',
+            },
+            
+            footer: {
+                marginTop: '24px',
+                paddingTop: '16px',
+                borderTop: '1px solid rgba(78, 205, 196, 0.1)',
+                textAlign: 'center',
+            },
+            
+            footerText: {
+                fontSize: '11px',
+                color: '#555',
+                letterSpacing: '1px',
+            },
+            
+            footerHighlight: {
+                color: '#4ECDC4',
+                fontWeight: '600',
+            },
+            
+            footerDivider: {
+                margin: '0 12px',
+                color: '#333',
+            },
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<InstantCoordinateJumper />);
+    </script>
+    
+    <style>
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.9; }
+        }
+        
+        input:focus {
+            border-color: rgba(78, 205, 196, 0.5) !important;
+            box-shadow: 0 0 0 2px rgba(78, 205, 196, 0.1) !important;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(78, 205, 196, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            #root > div > div:nth-child(3) {
+                grid-template-columns: 1fr !important;
+            }
+        }
+    </style>
+</body>
+</html>
