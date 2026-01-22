@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coordinate Hash Explorer | Beyond Tribonacci Demo</title>
+    <meta name="description" content="Interactive demonstration of the Position-as-Seed paradigm for procedural generation with O(1) coordinate access">
+    
+    <!-- React CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f0f1a;
+            min-height: 100vh;
+        }
+        
+        #root {
+            min-height: 100vh;
+        }
+        
+        /* Loading state */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: #60a5fa;
+            font-size: 18px;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #1a1a2e;
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <div>Loading Coordinate Hash Explorer...</div>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useCallback } = React;
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // COORDINATE HASH EXPLORER
+        // Demonstrates the Position-as-Seed paradigm: O(1) access to any point in space
+        // No iteration. No state machine. Pure functions of spatial position.
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // HASH FUNCTIONS: The foundation of deterministic procedural generation
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        // SplitMix64-inspired hash - bijective, excellent distribution
+        const splitmix64 = (seed) => {
+            let z = (seed + 0x9e3779b97f4a7c15n) & 0xffffffffffffffffn;
+            z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & 0xffffffffffffffffn;
+            z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & 0xffffffffffffffffn;
+            return z ^ (z >> 31n);
+        };
+
+        // Coordinate hash: transforms (x, y, salt) into deterministic pseudo-random value
+        const coordHash = (x, y, salt = 0) => {
+            const packed = BigInt(x) * 0x1f1f1f1fn + BigInt(y) * 0x3d3d3d3dn + BigInt(salt) * 0x7f7f7f7fn;
+            return splitmix64(packed & 0xffffffffffffffffn);
+        };
+
+        // Convert hash to normalized float [0, 1)
+        const hashToFloat = (hash) => {
+            return Number(hash & 0xffffffn) / 0x1000000;
+        };
+
+        // Convert hash to integer in range [0, max)
+        const hashToInt = (hash, max) => {
+            return Number(hash % BigInt(max));
+        };
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // MULTI-LAYER PROPERTY EXTRACTION
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        const LAYERS = {
+            EXISTENCE: 0,
+            TYPE: 1,
+            TEMPERATURE: 2,
+            DENSITY: 3,
+            RESOURCES: 4,
+            DANGER: 5,
+            SPECIAL: 6,
+        };
+
+        const CELL_TYPES = [
+            { name: 'Void', color: '#0a0a12', symbol: '·', description: 'Empty space' },
+            { name: 'Rocky', color: '#6b5344', symbol: '◆', description: 'Silicate body' },
+            { name: 'Ice', color: '#a8d5e5', symbol: '❄', description: 'Frozen volatiles' },
+            { name: 'Gas', color: '#e8b87a', symbol: '◎', description: 'Gas accumulation' },
+            { name: 'Metallic', color: '#8a8a9a', symbol: '▣', description: 'Heavy elements' },
+            { name: 'Oceanic', color: '#2563eb', symbol: '≋', description: 'Liquid surface' },
+            { name: 'Volcanic', color: '#dc2626', symbol: '▲', description: 'Molten interior' },
+            { name: 'Anomaly', color: '#a855f7', symbol: '✦', description: 'Unknown phenomena' },
+        ];
+
+        const RESOURCES = ['None', 'Carbon', 'Silicon', 'Iron', 'Titanium', 'Platinum', 'Exotic'];
+        const DANGER_LEVELS = ['Safe', 'Low', 'Moderate', 'High', 'Extreme'];
+
+        // Generate all properties for a cell - O(1) complexity
+        const generateCellProperties = (x, y, worldSeed, densityThreshold) => {
+            const existenceHash = coordHash(x, y, LAYERS.EXISTENCE + worldSeed);
+            const existenceValue = hashToFloat(existenceHash);
+            const exists = existenceValue > densityThreshold;
+            
+            if (!exists) {
+                return {
+                    exists: false,
+                    type: CELL_TYPES[0],
+                    typeIndex: 0,
+                    temperature: 0,
+                    density: 0,
+                    resources: 'None',
+                    resourceIndex: 0,
+                    danger: 'Safe',
+                    dangerIndex: 0,
+                    special: false,
+                    rawHashes: {
+                        existence: existenceHash.toString(16).padStart(16, '0'),
+                    },
+                    coordinates: { x, y },
+                    existenceValue: existenceValue.toFixed(4),
+                };
+            }
+            
+            const typeHash = coordHash(x, y, LAYERS.TYPE + worldSeed);
+            const typeIndex = hashToInt(typeHash, CELL_TYPES.length - 1) + 1;
+            
+            const tempHash = coordHash(x, y, LAYERS.TEMPERATURE + worldSeed);
+            const temperature = Math.floor(10 + hashToFloat(tempHash) * 9990);
+            
+            const densityHash = coordHash(x, y, LAYERS.DENSITY + worldSeed);
+            const density = (0.1 + hashToFloat(densityHash) * 19.9).toFixed(2);
+            
+            const resourceHash = coordHash(x, y, LAYERS.RESOURCES + worldSeed);
+            const resourceIndex = hashToInt(resourceHash, RESOURCES.length);
+            
+            const dangerHash = coordHash(x, y, LAYERS.DANGER + worldSeed);
+            const dangerIndex = hashToInt(dangerHash, DANGER_LEVELS.length);
+            
+            const specialHash = coordHash(x, y, LAYERS.SPECIAL + worldSeed);
+            const special = hashToFloat(specialHash) > 0.95;
+            
+            return {
+                exists: true,
+                type: CELL_TYPES[typeIndex],
+                typeIndex,
+                temperature,
+                density,
+                resources: RESOURCES[resourceIndex],
+                resourceIndex,
+                danger: DANGER_LEVELS[dangerIndex],
+                dangerIndex,
+                special,
+                rawHashes: {
+                    existence: existenceHash.toString(16).padStart(16, '0'),
+                    type: typeHash.toString(16).padStart(16, '0'),
+                    temperature: tempHash.toString(16).padStart(16, '0'),
+                    density: densityHash.toString(16).padStart(16, '0'),
+                    resources: resourceHash.toString(16).padStart(16, '0'),
+                    danger: dangerHash.toString(16).padStart(16, '0'),
+                    special: specialHash.toString(16).padStart(16, '0'),
+                },
+                coordinates: { x, y },
+                existenceValue: existenceValue.toFixed(4),
+            };
+        };
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // HELPER COMPONENTS
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        const PropertyCard = ({ label, value, color }) => (
+            <div style={{
+                background: '#1a1a2e',
+                borderRadius: '6px',
+                padding: '10px',
+                textAlign: 'center',
+            }}>
+                <div style={{ fontSize: '10px', color: '#888', marginBottom: '4px' }}>{label}</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color }}>{value}</div>
+            </div>
+        );
+
+        // ─────────────────────────────────────────────────────────────────────────────────
+        // MAIN COMPONENT
+        // ─────────────────────────────────────────────────────────────────────────────────
+
+        function CoordinateHashExplorer() {
+            const [worldSeed, setWorldSeed] = useState(42);
+            const [gridSize, setGridSize] = useState(16);
+            const [densityThreshold, setDensityThreshold] = useState(0.35);
+            const [selectedCell, setSelectedCell] = useState(null);
+            const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
+            const [showHashes, setShowHashes] = useState(false);
+            const [hoveredCell, setHoveredCell] = useState(null);
+            const [jumpX, setJumpX] = useState('');
+            const [jumpY, setJumpY] = useState('');
+            
+            const gridData = useMemo(() => {
+                const data = [];
+                for (let y = 0; y < gridSize; y++) {
+                    const row = [];
+                    for (let x = 0; x < gridSize; x++) {
+                        const worldX = x + viewportOffset.x;
+                        const worldY = y + viewportOffset.y;
+                        row.push(generateCellProperties(worldX, worldY, worldSeed, densityThreshold));
+                    }
+                    data.push(row);
+                }
+                return data;
+            }, [gridSize, worldSeed, densityThreshold, viewportOffset]);
+            
+            const stats = useMemo(() => {
+                let total = gridSize * gridSize;
+                let populated = 0;
+                let typeCounts = new Array(CELL_TYPES.length).fill(0);
+                
+                gridData.forEach(row => {
+                    row.forEach(cell => {
+                        if (cell.exists) {
+                            populated++;
+                            typeCounts[cell.typeIndex]++;
+                        } else {
+                            typeCounts[0]++;
+                        }
+                    });
+                });
+                
+                return { total, populated, typeCounts };
+            }, [gridData, gridSize]);
+            
+            const handleCellClick = useCallback((cell) => {
+                setSelectedCell(cell);
+            }, []);
+            
+            const pan = useCallback((dx, dy) => {
+                setViewportOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+            }, []);
+            
+            const handleJump = () => {
+                const x = parseInt(jumpX) || 0;
+                const y = parseInt(jumpY) || 0;
+                setViewportOffset({ x, y });
+                const centerCell = generateCellProperties(
+                    x + Math.floor(gridSize / 2),
+                    y + Math.floor(gridSize / 2),
+                    worldSeed,
+                    densityThreshold
+                );
+                setSelectedCell(centerCell);
+            };
+            
+            const randomizeSeed = () => {
+                setWorldSeed(Math.floor(Math.random() * 1000000));
+            };
+
+            const navBtnStyle = {
+                background: '#1a1a2e',
+                border: '1px solid #333',
+                borderRadius: '4px',
+                padding: '6px 10px',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '12px',
+            };
+
+            return (
+                <div style={{
+                    minHeight: '100vh',
+                    background: 'linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%)',
+                    color: '#e0e0e0',
+                    fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                    padding: '20px',
+                }}>
+                    {/* Header */}
+                    <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                        <h1 style={{
+                            fontSize: '24px',
+                            fontWeight: '700',
+                            background: 'linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            backgroundClip: 'text',
+                            marginBottom: '8px',
+                        }}>
+                            Coordinate Hash Explorer
+                        </h1>
+                        <p style={{ color: '#888', fontSize: '12px' }}>
+                            Position-as-Seed Paradigm • O(1) Access • No Iteration Required
+                        </p>
+                        <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
+                            Part of the <a href="https://github.com/MushroomFleet/BEYOND-TRIBONACCI" style={{ color: '#60a5fa', textDecoration: 'none' }}>Beyond Tribonacci</a> methodology
+                        </p>
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        {/* Left Panel: Controls */}
+                        <div style={{
+                            width: '220px',
+                            background: 'rgba(30, 30, 50, 0.8)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                        }}>
+                            <h3 style={{ color: '#60a5fa', marginBottom: '12px', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                Parameters
+                            </h3>
+                            
+                            {/* World Seed */}
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '11px', color: '#888' }}>
+                                    World Seed
+                                </label>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                    <input
+                                        type="number"
+                                        value={worldSeed}
+                                        onChange={(e) => setWorldSeed(parseInt(e.target.value) || 0)}
+                                        style={{
+                                            flex: 1,
+                                            background: '#1a1a2e',
+                                            border: '1px solid #333',
+                                            borderRadius: '4px',
+                                            padding: '6px 8px',
+                                            color: '#fff',
+                                            fontSize: '12px',
+                                        }}
+                                    />
+                                    <button
+                                        onClick={randomizeSeed}
+                                        style={{
+                                            background: '#3b82f6',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '6px 10px',
+                                            color: '#fff',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                        }}
+                                    >
+                                        🎲
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {/* Grid Size */}
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '11px', color: '#888' }}>
+                                    Grid: {gridSize}×{gridSize}
+                                </label>
+                                <input
+                                    type="range"
+                                    min="8"
+                                    max="24"
+                                    value={gridSize}
+                                    onChange={(e) => setGridSize(parseInt(e.target.value))}
+                                    style={{ width: '100%', accentColor: '#3b82f6' }}
+                                />
+                            </div>
+                            
+                            {/* Density Threshold */}
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '11px', color: '#888' }}>
+                                    Void: {(densityThreshold * 100).toFixed(0)}%
+                                </label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="90"
+                                    value={densityThreshold * 100}
+                                    onChange={(e) => setDensityThreshold(parseInt(e.target.value) / 100)}
+                                    style={{ width: '100%', accentColor: '#3b82f6' }}
+                                />
+                            </div>
+                            
+                            {/* Jump to Coordinates */}
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '11px', color: '#888' }}>
+                                    Jump to Coordinates
+                                </label>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                    <input
+                                        type="number"
+                                        placeholder="X"
+                                        value={jumpX}
+                                        onChange={(e) => setJumpX(e.target.value)}
+                                        style={{
+                                            width: '50px',
+                                            background: '#1a1a2e',
+                                            border: '1px solid #333',
+                                            borderRadius: '4px',
+                                            padding: '6px',
+                                            color: '#fff',
+                                            fontSize: '11px',
+                                        }}
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="Y"
+                                        value={jumpY}
+                                        onChange={(e) => setJumpY(e.target.value)}
+                                        style={{
+                                            width: '50px',
+                                            background: '#1a1a2e',
+                                            border: '1px solid #333',
+                                            borderRadius: '4px',
+                                            padding: '6px',
+                                            color: '#fff',
+                                            fontSize: '11px',
+                                        }}
+                                    />
+                                    <button
+                                        onClick={handleJump}
+                                        style={{
+                                            flex: 1,
+                                            background: '#8b5cf6',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '6px',
+                                            color: '#fff',
+                                            cursor: 'pointer',
+                                            fontSize: '11px',
+                                        }}
+                                    >
+                                        Go
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {/* Show Hashes Toggle */}
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={showHashes}
+                                        onChange={(e) => setShowHashes(e.target.checked)}
+                                        style={{ accentColor: '#3b82f6' }}
+                                    />
+                                    Show Raw Hashes
+                                </label>
+                            </div>
+                            
+                            {/* Statistics */}
+                            <div style={{
+                                background: '#1a1a2e',
+                                borderRadius: '6px',
+                                padding: '10px',
+                                marginBottom: '12px',
+                            }}>
+                                <h4 style={{ color: '#60a5fa', marginBottom: '8px', fontSize: '11px' }}>
+                                    Statistics
+                                </h4>
+                                <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+                                    <div>Cells: <span style={{ color: '#fff' }}>{stats.total}</span></div>
+                                    <div>Populated: <span style={{ color: '#22c55e' }}>{stats.populated}</span> ({((stats.populated / stats.total) * 100).toFixed(0)}%)</div>
+                                </div>
+                            </div>
+                            
+                            {/* Type Legend */}
+                            <div style={{
+                                background: '#1a1a2e',
+                                borderRadius: '6px',
+                                padding: '10px',
+                            }}>
+                                <h4 style={{ color: '#60a5fa', marginBottom: '8px', fontSize: '11px' }}>
+                                    Types
+                                </h4>
+                                <div style={{ display: 'grid', gap: '3px', fontSize: '10px' }}>
+                                    {CELL_TYPES.slice(1).map((type, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <div style={{
+                                                width: '14px',
+                                                height: '14px',
+                                                background: type.color,
+                                                borderRadius: '2px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '9px',
+                                            }}>
+                                                {type.symbol}
+                                            </div>
+                                            <span>{type.name}</span>
+                                            <span style={{ color: '#666', marginLeft: 'auto' }}>{stats.typeCounts[i + 1]}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Center: Grid */}
+                        <div style={{
+                            background: 'rgba(30, 30, 50, 0.8)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                        }}>
+                            {/* Navigation */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                <div style={{ fontSize: '10px', color: '#888' }}>
+                                    ({viewportOffset.x}, {viewportOffset.y}) → ({viewportOffset.x + gridSize - 1}, {viewportOffset.y + gridSize - 1})
+                                </div>
+                                <div style={{ display: 'flex', gap: '3px' }}>
+                                    <button onClick={() => pan(-gridSize, 0)} style={navBtnStyle}>◀</button>
+                                    <button onClick={() => pan(0, -gridSize)} style={navBtnStyle}>▲</button>
+                                    <button onClick={() => pan(0, gridSize)} style={navBtnStyle}>▼</button>
+                                    <button onClick={() => pan(gridSize, 0)} style={navBtnStyle}>▶</button>
+                                </div>
+                            </div>
+                            
+                            {/* Grid */}
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: `repeat(${gridSize}, ${Math.max(18, Math.floor(360 / gridSize))}px)`,
+                                gap: '1px',
+                                background: '#0a0a12',
+                                padding: '3px',
+                                borderRadius: '6px',
+                            }}>
+                                {gridData.map((row, rowIdx) =>
+                                    row.map((cell, colIdx) => {
+                                        const isSelected = selectedCell?.coordinates.x === cell.coordinates.x && 
+                                                           selectedCell?.coordinates.y === cell.coordinates.y;
+                                        const isHovered = hoveredCell?.coordinates.x === cell.coordinates.x &&
+                                                          hoveredCell?.coordinates.y === cell.coordinates.y;
+                                        const cellSize = Math.max(18, Math.floor(360 / gridSize));
+                                        
+                                        return (
+                                            <div
+                                                key={`${rowIdx}-${colIdx}`}
+                                                onClick={() => handleCellClick(cell)}
+                                                onMouseEnter={() => setHoveredCell(cell)}
+                                                onMouseLeave={() => setHoveredCell(null)}
+                                                style={{
+                                                    width: `${cellSize}px`,
+                                                    height: `${cellSize}px`,
+                                                    background: cell.type.color,
+                                                    borderRadius: '2px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    cursor: 'pointer',
+                                                    fontSize: `${Math.max(9, cellSize * 0.5)}px`,
+                                                    transition: 'transform 0.1s, box-shadow 0.1s',
+                                                    transform: isHovered ? 'scale(1.15)' : isSelected ? 'scale(1.1)' : 'scale(1)',
+                                                    boxShadow: isSelected 
+                                                        ? '0 0 0 2px #60a5fa, 0 0 10px rgba(96, 165, 250, 0.5)' 
+                                                        : cell.special 
+                                                            ? '0 0 6px rgba(168, 85, 247, 0.6)' 
+                                                            : 'none',
+                                                    zIndex: isHovered || isSelected ? 10 : 1,
+                                                    position: 'relative',
+                                                }}
+                                            >
+                                                {cell.exists && cell.type.symbol}
+                                                {cell.special && (
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        top: '-2px',
+                                                        right: '-2px',
+                                                        width: '5px',
+                                                        height: '5px',
+                                                        background: '#f472b6',
+                                                        borderRadius: '50%',
+                                                    }} />
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                            
+                            {/* Hover Info */}
+                            {hoveredCell && (
+                                <div style={{
+                                    marginTop: '10px',
+                                    padding: '6px 10px',
+                                    background: '#1a1a2e',
+                                    borderRadius: '4px',
+                                    fontSize: '10px',
+                                    display: 'flex',
+                                    gap: '12px',
+                                    justifyContent: 'center',
+                                }}>
+                                    <span>({hoveredCell.coordinates.x}, {hoveredCell.coordinates.y})</span>
+                                    <span style={{ color: hoveredCell.type.color }}>{hoveredCell.type.name}</span>
+                                    {hoveredCell.exists && (
+                                        <>
+                                            <span>{hoveredCell.temperature}K</span>
+                                            <span>{hoveredCell.resources}</span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Right Panel: Selected Cell Details */}
+                        <div style={{
+                            width: '240px',
+                            background: 'rgba(30, 30, 50, 0.8)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                        }}>
+                            <h3 style={{ color: '#60a5fa', marginBottom: '12px', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                Cell Properties
+                            </h3>
+                            
+                            {selectedCell ? (
+                                <div>
+                                    {/* Coordinates */}
+                                    <div style={{
+                                        background: '#1a1a2e',
+                                        borderRadius: '6px',
+                                        padding: '10px',
+                                        marginBottom: '10px',
+                                        textAlign: 'center',
+                                    }}>
+                                        <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>
+                                            ({selectedCell.coordinates.x}, {selectedCell.coordinates.y})
+                                        </div>
+                                        <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
+                                            World Coordinates
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Type Badge */}
+                                    <div style={{
+                                        background: selectedCell.type.color,
+                                        borderRadius: '6px',
+                                        padding: '12px',
+                                        marginBottom: '10px',
+                                        textAlign: 'center',
+                                    }}>
+                                        <div style={{ fontSize: '24px', marginBottom: '4px' }}>{selectedCell.type.symbol}</div>
+                                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{selectedCell.type.name}</div>
+                                        <div style={{ fontSize: '10px', opacity: 0.8 }}>{selectedCell.type.description}</div>
+                                    </div>
+                                    
+                                    {selectedCell.exists ? (
+                                        <>
+                                            {/* Properties Grid */}
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '1fr 1fr',
+                                                gap: '6px',
+                                                marginBottom: '10px',
+                                            }}>
+                                                <PropertyCard label="Temperature" value={`${selectedCell.temperature} K`} color="#f97316" />
+                                                <PropertyCard label="Density" value={`${selectedCell.density} g/cm³`} color="#06b6d4" />
+                                                <PropertyCard label="Resources" value={selectedCell.resources} color="#22c55e" />
+                                                <PropertyCard 
+                                                    label="Danger" 
+                                                    value={selectedCell.danger} 
+                                                    color={['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444'][selectedCell.dangerIndex]} 
+                                                />
+                                            </div>
+                                            
+                                            {selectedCell.special && (
+                                                <div style={{
+                                                    background: 'linear-gradient(135deg, #a855f7, #ec4899)',
+                                                    borderRadius: '6px',
+                                                    padding: '10px',
+                                                    marginBottom: '10px',
+                                                    textAlign: 'center',
+                                                }}>
+                                                    <div style={{ fontSize: '12px' }}>✦ ANOMALY DETECTED ✦</div>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div style={{
+                                            background: '#1a1a2e',
+                                            borderRadius: '6px',
+                                            padding: '16px',
+                                            marginBottom: '10px',
+                                            textAlign: 'center',
+                                            color: '#666',
+                                        }}>
+                                            <div style={{ fontSize: '11px' }}>Empty space</div>
+                                            <div style={{ fontSize: '10px', marginTop: '4px' }}>
+                                                Value: {selectedCell.existenceValue} &lt; {densityThreshold.toFixed(2)}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Raw Hashes */}
+                                    {showHashes && (
+                                        <div style={{
+                                            background: '#1a1a2e',
+                                            borderRadius: '6px',
+                                            padding: '10px',
+                                            fontSize: '9px',
+                                            fontFamily: 'monospace',
+                                        }}>
+                                            <div style={{ color: '#60a5fa', marginBottom: '6px', fontSize: '10px' }}>
+                                                Raw Hash Values
+                                            </div>
+                                            {Object.entries(selectedCell.rawHashes).map(([layer, hash]) => (
+                                                <div key={layer} style={{ marginBottom: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={{ color: '#888' }}>{layer}:</span>
+                                                    <span style={{ color: '#22c55e' }}>0x{hash.slice(0, 8)}…</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {/* O(1) Proof */}
+                                    <div style={{
+                                        marginTop: '10px',
+                                        padding: '10px',
+                                        background: 'rgba(96, 165, 250, 0.1)',
+                                        borderRadius: '6px',
+                                        border: '1px solid rgba(96, 165, 250, 0.3)',
+                                        fontSize: '10px',
+                                    }}>
+                                        <div style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '4px' }}>
+                                            O(1) Access
+                                        </div>
+                                        <div style={{ color: '#888' }}>
+                                            Computed instantly from hash(x, y, seed)—no iteration required.
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{
+                                    textAlign: 'center',
+                                    color: '#666',
+                                    padding: '30px 16px',
+                                }}>
+                                    <div style={{ fontSize: '24px', marginBottom: '10px' }}>👆</div>
+                                    <div style={{ fontSize: '11px' }}>Click any cell to inspect its properties</div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {/* Footer Info */}
+                    <div style={{
+                        marginTop: '20px',
+                        textAlign: 'center',
+                        fontSize: '11px',
+                        color: '#666',
+                        maxWidth: '700px',
+                        margin: '20px auto 0',
+                    }}>
+                        <strong style={{ color: '#60a5fa' }}>Core Insight:</strong> Position itself is the seed. 
+                        Every coordinate computes its properties through pure hash functions. 
+                        Same seed + coordinates = identical output across sessions.
+                    </div>
+                    
+                    {/* GitHub Link */}
+                    <div style={{
+                        marginTop: '16px',
+                        textAlign: 'center',
+                        fontSize: '10px',
+                        color: '#555',
+                    }}>
+                        <a 
+                            href="https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/01-Coordinate-Hash-Explorer" 
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#60a5fa', textDecoration: 'none' }}
+                        >
+                            View Source on GitHub
+                        </a>
+                        {' • '}
+                        <span>Beyond Tribonacci Methodology</span>
+                    </div>
+                </div>
+            );
+        }
+
+        // Mount the application
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CoordinateHashExplorer />);
+    </script>
+</body>
+</html>
