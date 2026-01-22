@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noise Comparison Grid Demo | Beyond Tribonacci</title>
+  <meta name="description" content="Interactive demonstration of Simplex noise superiority over white noise and Perlin. Three-panel comparison with artifact highlighting.">
+  
+  <!-- React from CDN -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body, #root {
+      width: 100%;
+      min-height: 100vh;
+    }
+    
+    body {
+      background: #0a0a0f;
+    }
+    
+    /* Loading state */
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      color: #6b7280;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+    }
+    
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #1e293b;
+      border-top-color: #4a9eff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="loading">
+      <div class="loading-spinner"></div>
+      <span>Initializing Noise Comparison Grid...</span>
+    </div>
+  </div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // NOISE COMPARISON GRID
+    // Demonstrates Simplex noise superiority over white noise and Perlin
+    // Three-panel comparison with artifact highlighting and interactive seed control
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // HASH FUNCTIONS - Pure deterministic randomness
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    const hash = (x, y, seed) => {
+      // SplitMix64-inspired hash for deterministic noise
+      let h = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
+      h = Math.imul(h ^ (h >>> 15), 2246822519);
+      h = Math.imul(h ^ (h >>> 13), 3266489917);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // WHITE NOISE - Pure random, no spatial correlation
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    const whiteNoise = (x, y, seed) => {
+      return hash(Math.floor(x * 50), Math.floor(y * 50), seed) * 2 - 1;
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // PERLIN NOISE - Classic implementation with visible axis artifacts
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+    const lerp = (a, b, t) => a + t * (b - a);
+
+    // Gradient vectors aligned to axes (causes artifacts)
+    const perlinGradients = [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [1, 1], [-1, 1], [1, -1], [-1, -1]
+    ];
+
+    const getPerlinGradient = (ix, iy, seed) => {
+      const idx = Math.floor(hash(ix, iy, seed) * perlinGradients.length);
+      return perlinGradients[idx % perlinGradients.length];
+    };
+
+    const dotGridGradient = (ix, iy, x, y, seed) => {
+      const gradient = getPerlinGradient(ix, iy, seed);
+      const dx = x - ix;
+      const dy = y - iy;
+      return dx * gradient[0] + dy * gradient[1];
+    };
+
+    const perlinNoise = (x, y, seed) => {
+      const scale = 4;
+      x *= scale;
+      y *= scale;
+      
+      const x0 = Math.floor(x);
+      const x1 = x0 + 1;
+      const y0 = Math.floor(y);
+      const y1 = y0 + 1;
+      
+      const sx = fade(x - x0);
+      const sy = fade(y - y0);
+      
+      const n00 = dotGridGradient(x0, y0, x, y, seed);
+      const n10 = dotGridGradient(x1, y0, x, y, seed);
+      const n01 = dotGridGradient(x0, y1, x, y, seed);
+      const n11 = dotGridGradient(x1, y1, x, y, seed);
+      
+      const nx0 = lerp(n00, n10, sx);
+      const nx1 = lerp(n01, n11, sx);
+      
+      return lerp(nx0, nx1, sy);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // SIMPLEX NOISE - Modern implementation, artifact-free
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+
+    // Simplex gradients - evenly distributed on unit circle
+    const simplexGrad = (hash) => {
+      const angle = (hash % 12) * Math.PI / 6;
+      return [Math.cos(angle), Math.sin(angle)];
+    };
+
+    const simplexNoise = (x, y, seed) => {
+      const scale = 4;
+      x *= scale;
+      y *= scale;
+      
+      // Skew input space
+      const s = (x + y) * F2;
+      const i = Math.floor(x + s);
+      const j = Math.floor(y + s);
+      
+      // Unskew cell origin
+      const t = (i + j) * G2;
+      const X0 = i - t;
+      const Y0 = j - t;
+      const x0 = x - X0;
+      const y0 = y - Y0;
+      
+      // Determine simplex
+      const i1 = x0 > y0 ? 1 : 0;
+      const j1 = x0 > y0 ? 0 : 1;
+      
+      const x1 = x0 - i1 + G2;
+      const y1 = y0 - j1 + G2;
+      const x2 = x0 - 1 + 2 * G2;
+      const y2 = y0 - 1 + 2 * G2;
+      
+      // Hash coordinates
+      const ii = i & 255;
+      const jj = j & 255;
+      
+      const gi0 = Math.floor(hash(ii, jj, seed) * 12);
+      const gi1 = Math.floor(hash(ii + i1, jj + j1, seed) * 12);
+      const gi2 = Math.floor(hash(ii + 1, jj + 1, seed) * 12);
+      
+      const g0 = simplexGrad(gi0);
+      const g1 = simplexGrad(gi1);
+      const g2 = simplexGrad(gi2);
+      
+      // Corner contributions
+      let n0 = 0, n1 = 0, n2 = 0;
+      
+      let t0 = 0.5 - x0 * x0 - y0 * y0;
+      if (t0 >= 0) {
+        t0 *= t0;
+        n0 = t0 * t0 * (g0[0] * x0 + g0[1] * y0);
+      }
+      
+      let t1 = 0.5 - x1 * x1 - y1 * y1;
+      if (t1 >= 0) {
+        t1 *= t1;
+        n1 = t1 * t1 * (g1[0] * x1 + g1[1] * y1);
+      }
+      
+      let t2 = 0.5 - x2 * x2 - y2 * y2;
+      if (t2 >= 0) {
+        t2 *= t2;
+        n2 = t2 * t2 * (g2[0] * x2 + g2[1] * y2);
+      }
+      
+      return 70 * (n0 + n1 + n2);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // ARTIFACT DETECTION - Highlights axis-aligned patterns in Perlin
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    const detectAxisArtifact = (x, y, seed, noiseFunc) => {
+      const epsilon = 0.02;
+      const center = noiseFunc(x, y, seed);
+      
+      // Sample along axes
+      const dx = noiseFunc(x + epsilon, y, seed) - center;
+      const dy = noiseFunc(x, y + epsilon, seed) - center;
+      
+      // Sample diagonally
+      const dxy = (noiseFunc(x + epsilon, y + epsilon, seed) - center) / Math.sqrt(2);
+      
+      // Axis artifacts show as higher gradient along cardinal directions
+      const axisGrad = Math.abs(dx) + Math.abs(dy);
+      const diagGrad = Math.abs(dxy) * 2;
+      
+      // Artifact intensity: higher when axis gradients dominate
+      return Math.max(0, axisGrad - diagGrad) * 3;
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // MAIN COMPONENT
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    function NoiseComparisonGrid() {
+      const [seed, setSeed] = useState(42);
+      const [showArtifacts, setShowArtifacts] = useState(true);
+      const [resolution, setResolution] = useState(256);
+      const [animateSeed, setAnimateSeed] = useState(false);
+      const [colorMode, setColorMode] = useState('grayscale');
+      
+      const whiteCanvasRef = useRef(null);
+      const perlinCanvasRef = useRef(null);
+      const simplexCanvasRef = useRef(null);
+      const animationRef = useRef(null);
+      
+      // Color mapping functions
+      const valueToColor = useCallback((value, artifactIntensity = 0) => {
+        const normalized = (value + 1) / 2;
+        
+        if (colorMode === 'grayscale') {
+          const gray = Math.floor(normalized * 255);
+          if (artifactIntensity > 0.1) {
+            const red = Math.min(255, gray + artifactIntensity * 150);
+            return `rgb(${red}, ${gray * 0.7}, ${gray * 0.7})`;
+          }
+          return `rgb(${gray}, ${gray}, ${gray})`;
+        }
+        
+        if (colorMode === 'terrain') {
+          if (normalized < 0.35) {
+            const t = normalized / 0.35;
+            return `rgb(${Math.floor(20 + t * 30)}, ${Math.floor(40 + t * 60)}, ${Math.floor(80 + t * 100)})`;
+          } else if (normalized < 0.45) {
+            const t = (normalized - 0.35) / 0.1;
+            return `rgb(${Math.floor(194 + t * 20)}, ${Math.floor(178 + t * 10)}, ${Math.floor(128 + t * 20)})`;
+          } else if (normalized < 0.7) {
+            const t = (normalized - 0.45) / 0.25;
+            return `rgb(${Math.floor(50 - t * 20)}, ${Math.floor(120 + t * 40)}, ${Math.floor(50 - t * 20)})`;
+          } else if (normalized < 0.85) {
+            const t = (normalized - 0.7) / 0.15;
+            return `rgb(${Math.floor(100 + t * 50)}, ${Math.floor(90 + t * 50)}, ${Math.floor(80 + t * 50)})`;
+          } else {
+            const t = (normalized - 0.85) / 0.15;
+            return `rgb(${Math.floor(200 + t * 55)}, ${Math.floor(200 + t * 55)}, ${Math.floor(210 + t * 45)})`;
+          }
+        }
+        
+        if (colorMode === 'plasma') {
+          const r = Math.floor(Math.sin(normalized * Math.PI) * 255);
+          const g = Math.floor(Math.sin(normalized * Math.PI * 2 + Math.PI / 3) * 127 + 128);
+          const b = Math.floor(Math.cos(normalized * Math.PI * 0.5) * 255);
+          return `rgb(${r}, ${g}, ${b})`;
+        }
+        
+        const gray = Math.floor(normalized * 255);
+        return `rgb(${gray}, ${gray}, ${gray})`;
+      }, [colorMode]);
+      
+      // Render noise to canvas
+      const renderNoise = useCallback((canvas, noiseFunc, showArtifactOverlay = false) => {
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const imageData = ctx.createImageData(width, height);
+        
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const nx = x / width;
+            const ny = y / height;
+            
+            const value = noiseFunc(nx, ny, seed);
+            const artifactIntensity = showArtifactOverlay ? detectAxisArtifact(nx, ny, seed, noiseFunc) : 0;
+            
+            const color = valueToColor(value, showArtifacts ? artifactIntensity : 0);
+            const rgb = color.match(/\d+/g).map(Number);
+            
+            const idx = (y * width + x) * 4;
+            imageData.data[idx] = rgb[0];
+            imageData.data[idx + 1] = rgb[1];
+            imageData.data[idx + 2] = rgb[2];
+            imageData.data[idx + 3] = 255;
+          }
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+      }, [seed, showArtifacts, valueToColor]);
+      
+      // Animation loop
+      useEffect(() => {
+        if (animateSeed) {
+          const animate = () => {
+            setSeed(prev => (prev + 0.1) % 1000);
+            animationRef.current = requestAnimationFrame(animate);
+          };
+          animationRef.current = requestAnimationFrame(animate);
+          
+          return () => {
+            if (animationRef.current) {
+              cancelAnimationFrame(animationRef.current);
+            }
+          };
+        }
+      }, [animateSeed]);
+      
+      // Render all canvases
+      useEffect(() => {
+        renderNoise(whiteCanvasRef.current, whiteNoise, false);
+        renderNoise(perlinCanvasRef.current, perlinNoise, true);
+        renderNoise(simplexCanvasRef.current, simplexNoise, false);
+      }, [seed, showArtifacts, resolution, colorMode, renderNoise]);
+      
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #0a0a0f 0%, #12121a 50%, #0a0a0f 100%)',
+          color: '#e0e0e8',
+          fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", monospace',
+          padding: '32px',
+          boxSizing: 'border-box'
+        }}>
+          {/* Header */}
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '40px'
+          }}>
+            <h1 style={{
+              fontSize: '28px',
+              fontWeight: 300,
+              letterSpacing: '4px',
+              textTransform: 'uppercase',
+              margin: 0,
+              background: 'linear-gradient(90deg, #4a9eff, #a855f7, #4a9eff)',
+              backgroundSize: '200% 100%',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              animation: 'gradient 8s ease infinite'
+            }}>
+              Noise Comparison Grid
+            </h1>
+            <p style={{
+              fontSize: '13px',
+              color: '#6b7280',
+              marginTop: '8px',
+              letterSpacing: '2px'
+            }}>
+              WHITE NOISE • PERLIN (1985) • SIMPLEX (2001)
+            </p>
+          </div>
+          
+          {/* Control Panel */}
+          <div style={{
+            background: 'rgba(20, 20, 30, 0.8)',
+            border: '1px solid rgba(74, 158, 255, 0.2)',
+            borderRadius: '12px',
+            padding: '24px',
+            marginBottom: '32px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '24px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            {/* Seed Control */}
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '11px',
+                textTransform: 'uppercase',
+                letterSpacing: '1.5px',
+                color: '#9ca3af',
+                marginBottom: '8px'
+              }}>
+                Seed Value: <span style={{ color: '#4a9eff' }}>{Math.floor(seed)}</span>
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="999"
+                value={Math.floor(seed)}
+                onChange={(e) => setSeed(parseInt(e.target.value))}
+                style={{
+                  width: '100%',
+                  height: '6px',
+                  borderRadius: '3px',
+                  appearance: 'none',
+                  background: 'linear-gradient(90deg, #1e293b, #334155)',
+                  cursor: 'pointer'
+                }}
+              />
+            </div>
+            
+            {/* Resolution Control */}
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '11px',
+                textTransform: 'uppercase',
+                letterSpacing: '1.5px',
+                color: '#9ca3af',
+                marginBottom: '8px'
+              }}>
+                Resolution: <span style={{ color: '#4a9eff' }}>{resolution}px</span>
+              </label>
+              <input
+                type="range"
+                min="64"
+                max="512"
+                step="64"
+                value={resolution}
+                onChange={(e) => setResolution(parseInt(e.target.value))}
+                style={{
+                  width: '100%',
+                  height: '6px',
+                  borderRadius: '3px',
+                  appearance: 'none',
+                  background: 'linear-gradient(90deg, #1e293b, #334155)',
+                  cursor: 'pointer'
+                }}
+              />
+            </div>
+            
+            {/* Color Mode */}
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '11px',
+                textTransform: 'uppercase',
+                letterSpacing: '1.5px',
+                color: '#9ca3af',
+                marginBottom: '8px'
+              }}>
+                Color Mode
+              </label>
+              <select
+                value={colorMode}
+                onChange={(e) => setColorMode(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '6px',
+                  color: '#e0e0e8',
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="grayscale">Grayscale</option>
+                <option value="terrain">Terrain</option>
+                <option value="plasma">Plasma</option>
+              </select>
+            </div>
+            
+            {/* Toggle Buttons */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+              <button
+                onClick={() => setShowArtifacts(!showArtifacts)}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  background: showArtifacts ? 'rgba(239, 68, 68, 0.2)' : 'rgba(74, 158, 255, 0.1)',
+                  border: `1px solid ${showArtifacts ? '#ef4444' : '#334155'}`,
+                  borderRadius: '6px',
+                  color: showArtifacts ? '#ef4444' : '#9ca3af',
+                  fontSize: '11px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {showArtifacts ? '◉' : '○'} Artifacts
+              </button>
+              <button
+                onClick={() => setAnimateSeed(!animateSeed)}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  background: animateSeed ? 'rgba(168, 85, 247, 0.2)' : 'rgba(74, 158, 255, 0.1)',
+                  border: `1px solid ${animateSeed ? '#a855f7' : '#334155'}`,
+                  borderRadius: '6px',
+                  color: animateSeed ? '#a855f7' : '#9ca3af',
+                  fontSize: '11px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {animateSeed ? '▮▮' : '▶'} Animate
+              </button>
+            </div>
+          </div>
+          
+          {/* Noise Panels */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '24px',
+            marginBottom: '40px'
+          }}>
+            {/* White Noise Panel */}
+            <div style={{
+              background: 'rgba(20, 20, 30, 0.6)',
+              border: '1px solid rgba(107, 114, 128, 0.3)',
+              borderRadius: '12px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(107, 114, 128, 0.2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#9ca3af'
+                  }}>White Noise</h3>
+                  <p style={{
+                    margin: '4px 0 0 0',
+                    fontSize: '11px',
+                    color: '#6b7280'
+                  }}>Pure random • O(1) hash</p>
+                </div>
+                <span style={{
+                  fontSize: '10px',
+                  padding: '4px 8px',
+                  background: 'rgba(107, 114, 128, 0.2)',
+                  borderRadius: '4px',
+                  color: '#9ca3af'
+                }}>BASELINE</span>
+              </div>
+              <div style={{ padding: '16px', textAlign: 'center' }}>
+                <canvas
+                  ref={whiteCanvasRef}
+                  width={resolution}
+                  height={resolution}
+                  style={{
+                    width: '100%',
+                    maxWidth: '300px',
+                    height: 'auto',
+                    aspectRatio: '1',
+                    borderRadius: '4px',
+                    imageRendering: 'pixelated'
+                  }}
+                />
+              </div>
+              <div style={{
+                padding: '12px 20px',
+                background: 'rgba(0, 0, 0, 0.2)',
+                fontSize: '11px',
+                color: '#6b7280'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Spatial Coherence:</span>
+                  <span style={{ color: '#ef4444' }}>None</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Use Case:</span>
+                  <span>Film grain, dithering</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Perlin Noise Panel */}
+            <div style={{
+              background: 'rgba(20, 20, 30, 0.6)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              position: 'relative'
+            }}>
+              {showArtifacts && (
+                <div style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  padding: '4px 8px',
+                  background: 'rgba(239, 68, 68, 0.9)',
+                  borderRadius: '4px',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: '#fff',
+                  zIndex: 10,
+                  animation: 'pulse 2s ease-in-out infinite'
+                }}>
+                  ⚠ AXIS ARTIFACTS
+                </div>
+              )}
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(239, 68, 68, 0.2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#f87171'
+                  }}>Perlin Noise</h3>
+                  <p style={{
+                    margin: '4px 0 0 0',
+                    fontSize: '11px',
+                    color: '#6b7280'
+                  }}>Ken Perlin, 1985 • O(2ⁿ)</p>
+                </div>
+                <span style={{
+                  fontSize: '10px',
+                  padding: '4px 8px',
+                  background: 'rgba(239, 68, 68, 0.2)',
+                  borderRadius: '4px',
+                  color: '#f87171'
+                }}>LEGACY</span>
+              </div>
+              <div style={{ padding: '16px', textAlign: 'center' }}>
+                <canvas
+                  ref={perlinCanvasRef}
+                  width={resolution}
+                  height={resolution}
+                  style={{
+                    width: '100%',
+                    maxWidth: '300px',
+                    height: 'auto',
+                    aspectRatio: '1',
+                    borderRadius: '4px',
+                    imageRendering: 'auto'
+                  }}
+                />
+              </div>
+              <div style={{
+                padding: '12px 20px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                fontSize: '11px',
+                color: '#6b7280'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Grid Artifacts:</span>
+                  <span style={{ color: '#ef4444' }}>Visible (axis-aligned)</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Gradient Continuity:</span>
+                  <span>C¹ (first derivative)</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Simplex Noise Panel */}
+            <div style={{
+              background: 'rgba(20, 20, 30, 0.6)',
+              border: '1px solid rgba(34, 197, 94, 0.4)',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 0 30px rgba(34, 197, 94, 0.1)'
+            }}>
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(34, 197, 94, 0.2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#4ade80'
+                  }}>Simplex Noise</h3>
+                  <p style={{
+                    margin: '4px 0 0 0',
+                    fontSize: '11px',
+                    color: '#6b7280'
+                  }}>Ken Perlin, 2001 • O(n²)</p>
+                </div>
+                <span style={{
+                  fontSize: '10px',
+                  padding: '4px 8px',
+                  background: 'rgba(34, 197, 94, 0.2)',
+                  borderRadius: '4px',
+                  color: '#4ade80'
+                }}>OPTIMAL ✓</span>
+              </div>
+              <div style={{ padding: '16px', textAlign: 'center' }}>
+                <canvas
+                  ref={simplexCanvasRef}
+                  width={resolution}
+                  height={resolution}
+                  style={{
+                    width: '100%',
+                    maxWidth: '300px',
+                    height: 'auto',
+                    aspectRatio: '1',
+                    borderRadius: '4px',
+                    imageRendering: 'auto'
+                  }}
+                />
+              </div>
+              <div style={{
+                padding: '12px 20px',
+                background: 'rgba(34, 197, 94, 0.1)',
+                fontSize: '11px',
+                color: '#6b7280'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>Grid Artifacts:</span>
+                  <span style={{ color: '#4ade80' }}>Minimal (triangular grid)</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Gradient Continuity:</span>
+                  <span style={{ color: '#4ade80' }}>C² (second derivative)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Comparison Table */}
+          <div style={{
+            background: 'rgba(20, 20, 30, 0.8)',
+            border: '1px solid rgba(74, 158, 255, 0.2)',
+            borderRadius: '12px',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid rgba(74, 158, 255, 0.1)',
+              fontSize: '12px',
+              textTransform: 'uppercase',
+              letterSpacing: '2px',
+              color: '#9ca3af'
+            }}>
+              Technical Comparison
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '12px'
+              }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0, 0, 0, 0.3)' }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#9ca3af', fontWeight: 500 }}>Property</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', color: '#9ca3af', fontWeight: 500 }}>White Noise</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', color: '#f87171', fontWeight: 500 }}>Perlin</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', color: '#4ade80', fontWeight: 500 }}>Simplex</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ['Spatial Coherence', '✗ None', '◐ Moderate', '✓ Excellent'],
+                    ['Axis Artifacts', '✗ N/A', '✗ Visible', '✓ Minimal'],
+                    ['Complexity (nD)', 'O(1)', 'O(2ⁿ)', 'O(n²)'],
+                    ['Gradient Continuity', 'None', 'C¹', 'C²'],
+                    ['GPU Efficiency', '✓ Excellent', '◐ Moderate', '✓ Excellent'],
+                    ['Visual Quality', '◐ Chaotic', '◐ Good', '✓ Superior']
+                  ].map(([prop, white, perlin, simplex], i) => (
+                    <tr key={i} style={{ borderTop: '1px solid rgba(74, 158, 255, 0.1)' }}>
+                      <td style={{ padding: '10px 16px', color: '#e0e0e8' }}>{prop}</td>
+                      <td style={{ padding: '10px 16px', textAlign: 'center', color: '#9ca3af' }}>{white}</td>
+                      <td style={{ padding: '10px 16px', textAlign: 'center', color: '#9ca3af' }}>{perlin}</td>
+                      <td style={{ padding: '10px 16px', textAlign: 'center', color: '#9ca3af' }}>{simplex}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          {/* Footer */}
+          <div style={{
+            marginTop: '32px',
+            textAlign: 'center',
+            fontSize: '11px',
+            color: '#4b5563',
+            letterSpacing: '1px'
+          }}>
+            <p>Pure-functional noise generation • Deterministic: same seed + coordinates = identical output</p>
+            <p style={{ marginTop: '4px' }}>
+              Reference: <span style={{ color: '#6b7280' }}>Beyond Tribonacci: A Contemporary Methodology for Endless World Generation</span>
+            </p>
+            <p style={{ marginTop: '8px' }}>
+              <a 
+                href="https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/03-Noise-Comparison-Grid" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{ color: '#4a9eff', textDecoration: 'none' }}
+              >
+                View Source on GitHub →
+              </a>
+            </p>
+          </div>
+          
+          {/* CSS Animations */}
+          <style>{`
+            @keyframes gradient {
+              0%, 100% { background-position: 0% 50%; }
+              50% { background-position: 100% 50%; }
+            }
+            @keyframes pulse {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.7; }
+            }
+            input[type="range"]::-webkit-slider-thumb {
+              appearance: none;
+              width: 16px;
+              height: 16px;
+              border-radius: 50%;
+              background: #4a9eff;
+              cursor: pointer;
+              border: 2px solid #1e293b;
+            }
+            input[type="range"]::-moz-range-thumb {
+              width: 16px;
+              height: 16px;
+              border-radius: 50%;
+              background: #4a9eff;
+              cursor: pointer;
+              border: 2px solid #1e293b;
+            }
+            select:focus, button:focus {
+              outline: none;
+              box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.3);
+            }
+            button:hover {
+              transform: translateY(-1px);
+            }
+          `}</style>
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // RENDER
+    // ─────────────────────────────────────────────────────────────────────────────────
+    
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<NoiseComparisonGrid />);
+  </script>
+</body>
+</html>
