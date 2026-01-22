@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Property Layer Visualizer Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+      background: linear-gradient(145deg, #0a0a0f 0%, #12121a 50%, #0d0d14 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    #root {
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React and ReactDOM from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+
+  <script>
+    const { useState, useMemo, useCallback } = React;
+
+    // PCG-style hash function - deterministic, high quality
+    const pcgHash = (x, y, salt, seed) => {
+      let state = ((x * 374761393) + (y * 668265263) + (salt * 2147483647) + seed) >>> 0;
+      state = ((state ^ (state >> 16)) * 2246822519) >>> 0;
+      state = ((state ^ (state >> 13)) * 3266489917) >>> 0;
+      state = (state ^ (state >> 16)) >>> 0;
+      return state / 4294967296;
+    };
+
+    // Secondary hash for more entropy
+    const mixHash = (x, y, salt, seed) => {
+      const h1 = pcgHash(x, y, salt, seed);
+      const h2 = pcgHash(y * 31, x * 17, salt + 12345, seed);
+      return (h1 + h2) / 2;
+    };
+
+    // Layer configurations with distinct salts
+    const LAYER_CONFIGS = {
+      existence: {
+        salt: 0x1A2B3C4D,
+        name: 'Existence',
+        description: 'Whether a feature exists at this location',
+        color: 'rgba(0, 255, 136, VAR)',
+        icon: '◆',
+      },
+      type: {
+        salt: 0x5E6F7A8B,
+        name: 'Type Class',
+        description: 'Classification category (1-4)',
+        color: 'rgba(255, 107, 107, VAR)',
+        icon: '▲',
+      },
+      resource: {
+        salt: 0x9C0D1E2F,
+        name: 'Resource',
+        description: 'Resource density value',
+        color: 'rgba(78, 205, 255, VAR)',
+        icon: '●',
+      },
+      danger: {
+        salt: 0x3A4B5C6D,
+        name: 'Danger Level',
+        description: 'Threat intensity',
+        color: 'rgba(255, 193, 7, VAR)',
+        icon: '★',
+      },
+    };
+
+    // Generate a single cell's layer values
+    const generateCellLayers = (x, y, seed, densityThreshold) => {
+      const layers = {};
+      
+      const existenceHash = pcgHash(x, y, LAYER_CONFIGS.existence.salt, seed);
+      layers.existence = existenceHash < densityThreshold ? existenceHash / densityThreshold : 0;
+      
+      const typeHash = mixHash(x, y, LAYER_CONFIGS.type.salt, seed);
+      layers.type = typeHash;
+      layers.typeClass = Math.floor(typeHash * 4) + 1;
+      
+      const resourceHash = pcgHash(x, y, LAYER_CONFIGS.resource.salt, seed);
+      layers.resource = resourceHash;
+      
+      const dangerHash = mixHash(x, y, LAYER_CONFIGS.danger.salt, seed);
+      layers.danger = dangerHash;
+      
+      return layers;
+    };
+
+    // Statistics calculation for correlation analysis
+    const calculateCorrelation = (data1, data2) => {
+      const n = data1.length;
+      if (n === 0) return 0;
+      
+      const mean1 = data1.reduce((a, b) => a + b, 0) / n;
+      const mean2 = data2.reduce((a, b) => a + b, 0) / n;
+      
+      let numerator = 0;
+      let denom1 = 0;
+      let denom2 = 0;
+      
+      for (let i = 0; i < n; i++) {
+        const diff1 = data1[i] - mean1;
+        const diff2 = data2[i] - mean2;
+        numerator += diff1 * diff2;
+        denom1 += diff1 * diff1;
+        denom2 += diff2 * diff2;
+      }
+      
+      const denominator = Math.sqrt(denom1 * denom2);
+      return denominator === 0 ? 0 : numerator / denominator;
+    };
+
+    function PropertyLayerVisualizer() {
+      const [seed, setSeed] = useState(42);
+      const [gridSize, setGridSize] = useState(24);
+      const [densityThreshold, setDensityThreshold] = useState(0.65);
+      const [cellSize, setCellSize] = useState(28);
+      const [visibleLayers, setVisibleLayers] = useState({
+        existence: true,
+        type: true,
+        resource: true,
+        danger: true,
+      });
+      const [hoveredCell, setHoveredCell] = useState(null);
+      const [showCorrelations, setShowCorrelations] = useState(false);
+
+      // Generate grid data
+      const gridData = useMemo(() => {
+        const data = [];
+        for (let y = 0; y < gridSize; y++) {
+          const row = [];
+          for (let x = 0; x < gridSize; x++) {
+            row.push(generateCellLayers(x, y, seed, densityThreshold));
+          }
+          data.push(row);
+        }
+        return data;
+      }, [seed, gridSize, densityThreshold]);
+
+      // Calculate correlations between layers
+      const correlations = useMemo(() => {
+        const flatData = gridData.flat();
+        const layerNames = Object.keys(LAYER_CONFIGS);
+        const correlationMatrix = {};
+        
+        layerNames.forEach(layer1 => {
+          correlationMatrix[layer1] = {};
+          const data1 = flatData.map(cell => cell[layer1] || 0);
+          
+          layerNames.forEach(layer2 => {
+            const data2 = flatData.map(cell => cell[layer2] || 0);
+            correlationMatrix[layer1][layer2] = calculateCorrelation(data1, data2);
+          });
+        });
+        
+        return correlationMatrix;
+      }, [gridData]);
+
+      // Layer statistics
+      const layerStats = useMemo(() => {
+        const flatData = gridData.flat();
+        const stats = {};
+        
+        Object.keys(LAYER_CONFIGS).forEach(layer => {
+          const values = flatData.map(cell => cell[layer] || 0).filter(v => v > 0);
+          stats[layer] = {
+            count: values.length,
+            mean: values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(3) : 0,
+            min: values.length ? Math.min(...values).toFixed(3) : 0,
+            max: values.length ? Math.max(...values).toFixed(3) : 0,
+          };
+        });
+        
+        return stats;
+      }, [gridData]);
+
+      const toggleLayer = useCallback((layer) => {
+        setVisibleLayers(prev => ({
+          ...prev,
+          [layer]: !prev[layer],
+        }));
+      }, []);
+
+      const randomizeSeed = () => {
+        setSeed(Math.floor(Math.random() * 1000000));
+      };
+
+      const getLayerColor = (layer, value, alpha = 1) => {
+        return LAYER_CONFIGS[layer].color.replace('VAR', (value * alpha).toFixed(2));
+      };
+
+      return React.createElement('div', {
+        style: {
+          minHeight: '100vh',
+          background: 'linear-gradient(145deg, #0a0a0f 0%, #12121a 50%, #0d0d14 100%)',
+          fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+          color: '#e0e0e0',
+          padding: '24px',
+          boxSizing: 'border-box',
+        }
+      }, [
+        // Header
+        React.createElement('div', {
+          key: 'header',
+          style: {
+            textAlign: 'center',
+            marginBottom: '32px',
+            position: 'relative',
+          }
+        }, [
+          React.createElement('div', {
+            key: 'header-line',
+            style: {
+              position: 'absolute',
+              top: 0,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '400px',
+              height: '2px',
+              background: 'linear-gradient(90deg, transparent, #00ff88, transparent)',
+              opacity: 0.5,
+            }
+          }),
+          React.createElement('h1', {
+            key: 'title',
+            style: {
+              fontSize: '1.8rem',
+              fontWeight: 300,
+              letterSpacing: '0.3em',
+              textTransform: 'uppercase',
+              margin: '20px 0 8px',
+              background: 'linear-gradient(135deg, #00ff88 0%, #4ecfff 50%, #ff6b6b 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }
+          }, 'Property Layer Visualizer'),
+          React.createElement('p', {
+            key: 'subtitle',
+            style: {
+              fontSize: '0.75rem',
+              color: '#666',
+              letterSpacing: '0.15em',
+            }
+          }, 'MULTI-LAYER HASH COMPOSITION WITH SALT VALUES'),
+        ]),
+
+        // Main Grid Layout
+        React.createElement('div', {
+          key: 'main-grid',
+          style: {
+            display: 'grid',
+            gridTemplateColumns: '280px 1fr 280px',
+            gap: '24px',
+            maxWidth: '1400px',
+            margin: '0 auto',
+          }
+        }, [
+          // Left Panel - Controls
+          React.createElement('div', {
+            key: 'left-panel',
+            style: {
+              background: 'rgba(20, 20, 30, 0.8)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              padding: '20px',
+              backdropFilter: 'blur(10px)',
+            }
+          }, [
+            React.createElement('h3', {
+              key: 'params-title',
+              style: {
+                fontSize: '0.7rem',
+                letterSpacing: '0.2em',
+                color: '#888',
+                marginBottom: '16px',
+                textTransform: 'uppercase',
+              }
+            }, 'Generation Parameters'),
+
+            // Seed Control
+            React.createElement('div', { key: 'seed-control', style: { marginBottom: '20px' } }, [
+              React.createElement('label', {
+                key: 'seed-label',
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '0.75rem',
+                  color: '#aaa',
+                  marginBottom: '8px',
+                }
+              }, [
+                React.createElement('span', { key: 'seed-text' }, 'Universe Seed'),
+                React.createElement('span', { key: 'seed-value', style: { color: '#00ff88' } }, seed),
+              ]),
+              React.createElement('div', { key: 'seed-inputs', style: { display: 'flex', gap: '8px' } }, [
+                React.createElement('input', {
+                  key: 'seed-input',
+                  type: 'number',
+                  value: seed,
+                  onChange: (e) => setSeed(parseInt(e.target.value) || 0),
+                  style: {
+                    flex: 1,
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    fontFamily: 'inherit',
+                  }
+                }),
+                React.createElement('button', {
+                  key: 'seed-random',
+                  onClick: randomizeSeed,
+                  style: {
+                    background: 'linear-gradient(135deg, #00ff88, #00cc6a)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    color: '#000',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }
+                }, '↻'),
+              ]),
+            ]),
+
+            // Grid Size
+            React.createElement('div', { key: 'grid-control', style: { marginBottom: '20px' } }, [
+              React.createElement('label', {
+                key: 'grid-label',
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '0.75rem',
+                  color: '#aaa',
+                  marginBottom: '8px',
+                }
+              }, [
+                React.createElement('span', { key: 'grid-text' }, 'Grid Size'),
+                React.createElement('span', { key: 'grid-value', style: { color: '#4ecfff' } }, `${gridSize}×${gridSize}`),
+              ]),
+              React.createElement('input', {
+                key: 'grid-input',
+                type: 'range',
+                min: 8,
+                max: 40,
+                value: gridSize,
+                onChange: (e) => setGridSize(parseInt(e.target.value)),
+                style: { width: '100%', accentColor: '#4ecfff' }
+              }),
+            ]),
+
+            // Density Threshold
+            React.createElement('div', { key: 'density-control', style: { marginBottom: '20px' } }, [
+              React.createElement('label', {
+                key: 'density-label',
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '0.75rem',
+                  color: '#aaa',
+                  marginBottom: '8px',
+                }
+              }, [
+                React.createElement('span', { key: 'density-text' }, 'Existence Density'),
+                React.createElement('span', { key: 'density-value', style: { color: '#ff6b6b' } }, `${(densityThreshold * 100).toFixed(0)}%`),
+              ]),
+              React.createElement('input', {
+                key: 'density-input',
+                type: 'range',
+                min: 0.1,
+                max: 1,
+                step: 0.05,
+                value: densityThreshold,
+                onChange: (e) => setDensityThreshold(parseFloat(e.target.value)),
+                style: { width: '100%', accentColor: '#ff6b6b' }
+              }),
+            ]),
+
+            // Cell Size
+            React.createElement('div', { key: 'cell-control', style: { marginBottom: '24px' } }, [
+              React.createElement('label', {
+                key: 'cell-label',
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '0.75rem',
+                  color: '#aaa',
+                  marginBottom: '8px',
+                }
+              }, [
+                React.createElement('span', { key: 'cell-text' }, 'Cell Size'),
+                React.createElement('span', { key: 'cell-value', style: { color: '#ffc107' } }, `${cellSize}px`),
+              ]),
+              React.createElement('input', {
+                key: 'cell-input',
+                type: 'range',
+                min: 12,
+                max: 48,
+                value: cellSize,
+                onChange: (e) => setCellSize(parseInt(e.target.value)),
+                style: { width: '100%', accentColor: '#ffc107' }
+              }),
+            ]),
+
+            // Divider
+            React.createElement('div', {
+              key: 'divider1',
+              style: {
+                height: '1px',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
+                margin: '20px 0',
+              }
+            }),
+
+            // Layer Toggles Title
+            React.createElement('h3', {
+              key: 'layers-title',
+              style: {
+                fontSize: '0.7rem',
+                letterSpacing: '0.2em',
+                color: '#888',
+                marginBottom: '16px',
+                textTransform: 'uppercase',
+              }
+            }, 'Layer Visibility'),
+
+            // Layer Toggle Buttons
+            ...Object.entries(LAYER_CONFIGS).map(([key, config]) =>
+              React.createElement('button', {
+                key: `layer-${key}`,
+                onClick: () => toggleLayer(key),
+                style: {
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '12px',
+                  marginBottom: '8px',
+                  background: visibleLayers[key]
+                    ? `linear-gradient(135deg, ${config.color.replace('VAR', '0.15')}, transparent)`
+                    : 'rgba(0, 0, 0, 0.3)',
+                  border: `1px solid ${visibleLayers[key] ? config.color.replace('VAR', '0.4') : 'rgba(255,255,255,0.05)'}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  fontFamily: 'inherit',
+                }
+              }, [
+                React.createElement('span', {
+                  key: 'icon',
+                  style: {
+                    fontSize: '1.2rem',
+                    color: config.color.replace('VAR', visibleLayers[key] ? '1' : '0.3'),
+                    width: '24px',
+                  }
+                }, config.icon),
+                React.createElement('div', { key: 'text', style: { flex: 1, textAlign: 'left' } }, [
+                  React.createElement('div', {
+                    key: 'name',
+                    style: {
+                      fontSize: '0.8rem',
+                      color: visibleLayers[key] ? '#fff' : '#555',
+                      fontWeight: 500,
+                    }
+                  }, config.name),
+                  React.createElement('div', {
+                    key: 'salt',
+                    style: {
+                      fontSize: '0.65rem',
+                      color: visibleLayers[key] ? '#888' : '#444',
+                    }
+                  }, `Salt: 0x${config.salt.toString(16).toUpperCase()}`),
+                ]),
+                React.createElement('div', {
+                  key: 'indicator',
+                  style: {
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    background: visibleLayers[key] ? config.color.replace('VAR', '1') : '#333',
+                    boxShadow: visibleLayers[key] ? `0 0 12px ${config.color.replace('VAR', '0.6')}` : 'none',
+                  }
+                }),
+              ])
+            ),
+          ]),
+
+          // Center - Grid Visualization
+          React.createElement('div', {
+            key: 'center-panel',
+            style: {
+              background: 'rgba(20, 20, 30, 0.8)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              padding: '20px',
+              backdropFilter: 'blur(10px)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              overflow: 'hidden',
+            }
+          }, [
+            React.createElement('div', {
+              key: 'grid-header',
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                width: '100%',
+                marginBottom: '16px',
+              }
+            }, [
+              React.createElement('h3', {
+                key: 'grid-title',
+                style: {
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.2em',
+                  color: '#888',
+                  textTransform: 'uppercase',
+                }
+              }, 'Coordinate Space Visualization'),
+              React.createElement('span', {
+                key: 'cell-count',
+                style: { fontSize: '0.7rem', color: '#555' }
+              }, `${gridSize * gridSize} cells`),
+            ]),
+
+            // Grid
+            React.createElement('div', {
+              key: 'grid',
+              style: {
+                display: 'grid',
+                gridTemplateColumns: `repeat(${gridSize}, ${cellSize}px)`,
+                gap: '1px',
+                background: 'rgba(255, 255, 255, 0.02)',
+                padding: '1px',
+                borderRadius: '8px',
+                maxWidth: '100%',
+                overflowX: 'auto',
+              }
+            }, gridData.flatMap((row, y) =>
+              row.map((cell, x) => {
+                const isHovered = hoveredCell?.x === x && hoveredCell?.y === y;
+                return React.createElement('div', {
+                  key: `${x}-${y}`,
+                  onMouseEnter: () => setHoveredCell({ x, y, ...cell }),
+                  onMouseLeave: () => setHoveredCell(null),
+                  style: {
+                    width: cellSize,
+                    height: cellSize,
+                    position: 'relative',
+                    background: '#0a0a0f',
+                    borderRadius: '2px',
+                    cursor: 'crosshair',
+                    transition: 'transform 0.1s ease',
+                    transform: isHovered ? 'scale(1.1)' : 'scale(1)',
+                    zIndex: isHovered ? 10 : 1,
+                    boxShadow: isHovered ? '0 0 20px rgba(0,255,136,0.3)' : 'none',
+                  }
+                }, [
+                  // Existence Layer
+                  visibleLayers.existence && cell.existence > 0 && React.createElement('div', {
+                    key: 'existence',
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      background: getLayerColor('existence', cell.existence, 0.7),
+                      borderRadius: '2px',
+                    }
+                  }),
+                  // Type Layer
+                  visibleLayers.type && React.createElement('div', {
+                    key: 'type',
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      background: getLayerColor('type', cell.type, 0.4),
+                      borderRadius: '2px',
+                      mixBlendMode: 'screen',
+                    }
+                  }),
+                  // Resource Layer
+                  visibleLayers.resource && React.createElement('div', {
+                    key: 'resource',
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      background: getLayerColor('resource', cell.resource, 0.35),
+                      borderRadius: '2px',
+                      mixBlendMode: 'screen',
+                    }
+                  }),
+                  // Danger Layer
+                  visibleLayers.danger && React.createElement('div', {
+                    key: 'danger',
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      background: getLayerColor('danger', cell.danger, 0.3),
+                      borderRadius: '2px',
+                      mixBlendMode: 'screen',
+                    }
+                  }),
+                  // Hover border
+                  isHovered && React.createElement('div', {
+                    key: 'hover',
+                    style: {
+                      position: 'absolute',
+                      inset: 0,
+                      border: '2px solid #00ff88',
+                      borderRadius: '2px',
+                      pointerEvents: 'none',
+                    }
+                  }),
+                ]);
+              })
+            )),
+
+            // Hovered Cell Info
+            React.createElement('div', {
+              key: 'hover-info',
+              style: {
+                marginTop: '16px',
+                padding: '12px 20px',
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                minHeight: '60px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }
+            }, hoveredCell ? React.createElement('div', {
+              style: {
+                display: 'flex',
+                gap: '24px',
+                fontSize: '0.75rem',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+              }
+            }, [
+              React.createElement('div', { key: 'coord' }, [
+                React.createElement('span', { style: { color: '#666' } }, 'COORD: '),
+                React.createElement('span', { style: { color: '#fff' } }, `(${hoveredCell.x}, ${hoveredCell.y})`),
+              ]),
+              React.createElement('div', { key: 'exist' }, [
+                React.createElement('span', { style: { color: '#666' } }, 'EXIST: '),
+                React.createElement('span', { style: { color: '#00ff88' } }, hoveredCell.existence.toFixed(3)),
+              ]),
+              React.createElement('div', { key: 'type' }, [
+                React.createElement('span', { style: { color: '#666' } }, 'TYPE: '),
+                React.createElement('span', { style: { color: '#ff6b6b' } }, `Class ${hoveredCell.typeClass}`),
+              ]),
+              React.createElement('div', { key: 'res' }, [
+                React.createElement('span', { style: { color: '#666' } }, 'RES: '),
+                React.createElement('span', { style: { color: '#4ecfff' } }, hoveredCell.resource.toFixed(3)),
+              ]),
+              React.createElement('div', { key: 'danger' }, [
+                React.createElement('span', { style: { color: '#666' } }, 'DANGER: '),
+                React.createElement('span', { style: { color: '#ffc107' } }, hoveredCell.danger.toFixed(3)),
+              ]),
+            ]) : React.createElement('span', { style: { color: '#555', fontSize: '0.75rem' } }, 'Hover over a cell to inspect layer values')),
+          ]),
+
+          // Right Panel - Statistics
+          React.createElement('div', {
+            key: 'right-panel',
+            style: {
+              background: 'rgba(20, 20, 30, 0.8)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              padding: '20px',
+              backdropFilter: 'blur(10px)',
+            }
+          }, [
+            React.createElement('h3', {
+              key: 'stats-title',
+              style: {
+                fontSize: '0.7rem',
+                letterSpacing: '0.2em',
+                color: '#888',
+                marginBottom: '16px',
+                textTransform: 'uppercase',
+              }
+            }, 'Layer Statistics'),
+
+            // Layer Stats
+            ...Object.entries(LAYER_CONFIGS).map(([key, config]) =>
+              React.createElement('div', {
+                key: `stats-${key}`,
+                style: {
+                  marginBottom: '16px',
+                  padding: '12px',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  borderRadius: '8px',
+                  border: `1px solid ${config.color.replace('VAR', '0.2')}`,
+                }
+              }, [
+                React.createElement('div', {
+                  key: 'header',
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '8px',
+                  }
+                }, [
+                  React.createElement('span', { key: 'icon', style: { color: config.color.replace('VAR', '1') } }, config.icon),
+                  React.createElement('span', { key: 'name', style: { fontSize: '0.75rem', color: '#aaa' } }, config.name),
+                ]),
+                React.createElement('div', {
+                  key: 'values',
+                  style: {
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '4px',
+                    fontSize: '0.7rem',
+                  }
+                }, [
+                  React.createElement('div', { key: 'count' }, [
+                    React.createElement('span', { style: { color: '#555' } }, 'Count: '),
+                    React.createElement('span', { style: { color: '#fff' } }, layerStats[key]?.count || 0),
+                  ]),
+                  React.createElement('div', { key: 'mean' }, [
+                    React.createElement('span', { style: { color: '#555' } }, 'Mean: '),
+                    React.createElement('span', { style: { color: '#fff' } }, layerStats[key]?.mean || 0),
+                  ]),
+                  React.createElement('div', { key: 'min' }, [
+                    React.createElement('span', { style: { color: '#555' } }, 'Min: '),
+                    React.createElement('span', { style: { color: '#fff' } }, layerStats[key]?.min || 0),
+                  ]),
+                  React.createElement('div', { key: 'max' }, [
+                    React.createElement('span', { style: { color: '#555' } }, 'Max: '),
+                    React.createElement('span', { style: { color: '#fff' } }, layerStats[key]?.max || 0),
+                  ]),
+                ]),
+              ])
+            ),
+
+            // Divider
+            React.createElement('div', {
+              key: 'divider2',
+              style: {
+                height: '1px',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
+                margin: '20px 0',
+              }
+            }),
+
+            // Correlation Toggle
+            React.createElement('button', {
+              key: 'corr-toggle',
+              onClick: () => setShowCorrelations(!showCorrelations),
+              style: {
+                width: '100%',
+                padding: '10px',
+                background: showCorrelations
+                  ? 'linear-gradient(135deg, rgba(255,255,255,0.1), transparent)'
+                  : 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                color: '#aaa',
+                fontSize: '0.7rem',
+                letterSpacing: '0.15em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                marginBottom: '12px',
+              }
+            }, `${showCorrelations ? '▼' : '▶'} Correlation Matrix`),
+
+            // Correlation Matrix
+            showCorrelations && React.createElement('div', {
+              key: 'corr-matrix',
+              style: {
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                padding: '12px',
+                overflow: 'auto',
+              }
+            }, [
+              React.createElement('table', {
+                key: 'table',
+                style: {
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '0.65rem',
+                }
+              }, [
+                React.createElement('thead', { key: 'thead' },
+                  React.createElement('tr', null, [
+                    React.createElement('th', { key: 'empty', style: { padding: '4px', color: '#555' } }),
+                    ...Object.keys(LAYER_CONFIGS).map(key =>
+                      React.createElement('th', {
+                        key,
+                        style: {
+                          padding: '4px',
+                          color: LAYER_CONFIGS[key].color.replace('VAR', '0.8'),
+                          fontWeight: 400,
+                        }
+                      }, LAYER_CONFIGS[key].icon)
+                    ),
+                  ])
+                ),
+                React.createElement('tbody', { key: 'tbody' },
+                  Object.keys(LAYER_CONFIGS).map(row =>
+                    React.createElement('tr', { key: row }, [
+                      React.createElement('td', {
+                        key: 'label',
+                        style: {
+                          padding: '4px',
+                          color: LAYER_CONFIGS[row].color.replace('VAR', '0.8'),
+                        }
+                      }, LAYER_CONFIGS[row].icon),
+                      ...Object.keys(LAYER_CONFIGS).map(col => {
+                        const corr = correlations[row]?.[col] || 0;
+                        const isHighCorr = Math.abs(corr) > 0.3;
+                        return React.createElement('td', {
+                          key: col,
+                          style: {
+                            padding: '4px',
+                            textAlign: 'center',
+                            color: row === col ? '#666' : (isHighCorr ? '#ff6b6b' : '#4a4a4a'),
+                            background: row === col ? 'transparent' :
+                              `rgba(${corr > 0 ? '0, 255, 136' : '255, 107, 107'}, ${Math.abs(corr) * 0.3})`,
+                          }
+                        }, row === col ? '—' : corr.toFixed(2));
+                      }),
+                    ])
+                  )
+                ),
+              ]),
+              React.createElement('p', {
+                key: 'note',
+                style: {
+                  fontSize: '0.6rem',
+                  color: '#555',
+                  marginTop: '8px',
+                  textAlign: 'center',
+                }
+              }, 'Values near 0 indicate statistical independence'),
+            ]),
+
+            // Info Box
+            React.createElement('div', {
+              key: 'info-box',
+              style: {
+                marginTop: '20px',
+                padding: '12px',
+                background: 'rgba(0, 255, 136, 0.05)',
+                border: '1px solid rgba(0, 255, 136, 0.15)',
+                borderRadius: '8px',
+              }
+            }, [
+              React.createElement('h4', {
+                key: 'info-title',
+                style: {
+                  fontSize: '0.7rem',
+                  color: '#00ff88',
+                  marginBottom: '8px',
+                  fontWeight: 500,
+                }
+              }, 'Statistical Independence'),
+              React.createElement('p', {
+                key: 'info-text',
+                style: {
+                  fontSize: '0.65rem',
+                  color: '#888',
+                  lineHeight: 1.6,
+                }
+              }, 'Each layer uses a unique salt value combined with the same (x,y) coordinates. Different salts produce statistically independent outputs—correlation values near zero demonstrate that layer properties have no predictable relationship.'),
+            ]),
+          ]),
+        ]),
+
+        // Footer
+        React.createElement('div', {
+          key: 'footer',
+          style: {
+            textAlign: 'center',
+            marginTop: '32px',
+            padding: '16px',
+            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+          }
+        }, React.createElement('p', {
+          style: {
+            fontSize: '0.65rem',
+            color: '#444',
+            letterSpacing: '0.1em',
+          }
+        }, 'HASH FUNCTION: PCG-STYLE PERMUTATION • DETERMINISM: position_is_seed PARADIGM')),
+      ]);
+    }
+
+    // Render the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(PropertyLayerVisualizer));
+  </script>
+</body>
+</html>
