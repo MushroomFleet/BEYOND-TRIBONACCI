@@ -4,6 +4,11 @@
 
 This repository contains 15 interactive demonstrations exploring modern procedural generation techniques that supersede Braben's 1984 Tribonacci algorithm. Each demo is a self-contained React JSX component illustrating a specific technique from the position-as-seed paradigm.
 
+## Part of the BEYOND TRIBONACCI project
+[BEYOND-TRIBONACCI](https://github.com/MushroomFleet/BEYOND-TRIBONACCI)
+[Zerobytes-Skill](https://github.com/MushroomFleet/Zerobytes-Skill)
+[Braben-Building-Principles-Skill](https://github.com/MushroomFleet/Braben-Building-Principles-Skill)
+
 ---
 
 ## The Core Insight
