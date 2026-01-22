@@ -1,313 +1,153 @@
-# Zerobytes-Skill
+# BEYOND TRIBONACCI
 
-**Position-is-Seed Procedural Generation for Claude Code Assistants**
+> **Procedural Deterministic Seed-Based World Generation — A React Component Showcase**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Claude Skill](https://img.shields.io/badge/Claude-Skill-blueviolet)](https://github.com/MushroomFleet/Zerobytes-Skill)
-[![WebGPU](https://img.shields.io/badge/WebGPU-Demo-00d4aa?logo=webgl)](https://github.com/MushroomFleet/Zerobytes-Skill)
+This repository contains 16 interactive demonstrations exploring modern procedural generation techniques that supersede Braben's 1984 Tribonacci algorithm. Each demo is a self-contained React JSX component illustrating a specific technique from the position-as-seed paradigm.
 
-> *"The coordinate IS the seed. Zero bytes store infinity."*
-
----
-
-## What is Zerobytes?
-
-Zerobytes is a Claude skill that teaches AI coding assistants the **position-is-seed paradigm** for procedural generation. Instead of sequential state iteration (like Braben's 1984 Tribonacci generator), Zerobytes uses pure coordinate hashing—enabling O(1) random access to any point in infinite space.
-
-When you install this skill, Claude gains expertise in:
-
-- **Infinite world generation** (Minecraft-style chunks, No Man's Sky planets)
-- **Deterministic procedural content** (same seed = same world, always)
-- **GPU-parallelizable generation** (thousands of elements simultaneously)
-- **Spatially coherent noise** (biomes, regions, terrain that makes sense)
-- **Hierarchical constraint systems** (galaxies → systems → planets → terrain)
+## Part of the BEYOND TRIBONACCI project
+[BEYOND-TRIBONACCI](https://github.com/MushroomFleet/BEYOND-TRIBONACCI)
+[Zerobytes-Skill](https://github.com/MushroomFleet/Zerobytes-Skill)
+[Braben-Building-Principles-Skill](https://github.com/MushroomFleet/Braben-Building-Principles-Skill)
 
 ---
 
-## The Five Laws
+## The Core Insight
 
-Every procedural system Zerobytes designs satisfies these laws:
+David Braben's original Elite encoded 2,048 star systems in just 6 bytes using Tribonacci sequences—a masterpiece of constraint-driven design. But modern hardware demands a fundamentally different approach:
 
-| Law | Requirement |
-|-----|-------------|
-| **O(1) Access** | Any position computable without iterating predecessors |
-| **Parallelism** | Elements depend only on coordinates, never siblings |
-| **Coherence** | Adjacent coordinates produce related values |
-| **Hierarchy** | Child seeds derive from parent seeds + local position |
-| **Determinism** | Same inputs → same outputs across all machines |
+**Position itself should be the seed.**
+
+No state machine. No sequential iteration. Any coordinate, anywhere in infinite space, immediately computes its contents through pure functions of spatial position. These demonstrations make that paradigm tangible and interactive.
 
 ---
 
-## Installation
+## Demo Collection
 
-### For Claude Desktop / Claude Code
-
-1. Download `zerobytes.skill` from the [Releases](https://github.com/MushroomFleet/Zerobytes-Skill/releases) page
-2. Add to your Claude skills directory
-3. The skill auto-triggers on procedural generation requests
-
-### For Claude Projects
-
-Upload `zerobytes.skill` to your project's knowledge base.
-
-### Manual Integration
-
-Copy the contents of `SKILL.md` into your project's system prompt or CLAUDE.md file.
+| # | Demo | Technique | Description |
+|---|------|-----------|-------------|
+| 01 | [Coordinate Hash Explorer](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/01-Coordinate-Hash-Explorer) | Position-as-Seed | Interactive grid demonstrating O(1) property lookup from coordinates |
+| 02 | [Property Layer Visualizer](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/02-Property-Layer-Visualizer) | Multi-Layer Hashing | Toggle independent property layers derived from salt-varied hashes |
+| 03 | [Noise Comparison Grid](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/03-Noise-Comparison-Grid) | Simplex vs Perlin | Side-by-side noise algorithm comparison with artifact highlighting |
+| 04 | [fBm Octave Stacker](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/04-fBm-Octave-Stacker) | Fractal Brownian Motion | Slider-controlled octave accumulation with parameter adjustment |
+| 05 | [Warp Field Demonstrator](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/05-Warp-Field-Demonstrator) | Domain Warping | Before/after visualization of domain distortion effects |
+| 06 | [Layered Terrain Builder](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/06-Layered-Terrain-Builder) | Noise Stack | Step-through composition of foundation to application layers |
+| 07 | [Galaxy-to-Grain Drill-Down](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/07-Galaxy-to-Grain-Drill-Down) | Hierarchical Constraints | Nested zoom showing parent-to-child constraint propagation |
+| 08 | [Instant Coordinate Jumper](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/08-Instant-Coordinate-Jumper) | O(1) Random Access | Jump to arbitrary coordinates instantly vs sequential iteration |
+| 09 | [Neighbor Relationship Map](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/09-Neighbor-Relationship-Map) | Spatial Coherence | Visualize mathematical kinship between adjacent cells |
+| 10 | [Seamless Zoom Navigator](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/10-Seamless-Zoom-Navigator) | Multi-Scale Consistency | Continuous zoom without LOD discontinuities |
+| 11 | [Stellar Forge Simulator](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/11-Stellar-Forge-Simulator) | Star Generation | Mass → luminosity → temperature derivation chains |
+| 12 | [Orbital Mechanics Display](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/12-Orbital-Mechanics-Display) | Planet Derivation | Frost lines, habitable zones, and constrained planet generation |
+| 13 | [Planetary Surface Renderer](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/13-Planetary-Surface-Renderer) | Terrain Heightfields | Multi-octave spherical terrain with noise contribution breakdown |
+| 14 | [Throughput Benchmark Viz](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/14-Throughput-Benchmark-Viz) | Hash Performance | Live performance comparison of hash function throughput |
+| 15 | [Sequential vs Parallel Race](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/15-Sequential-vs-Parallel-Race) | Tribonacci Comparison | Visual race between sequential and parallel generation |
+| 16 | [15 + WebGPU](https://github.com/MushroomFleet/BEYOND-TRIBONACCI/tree/main/16-15-plus-webgpu) | GPU Parallelism | Demo 15 with WebGPU compute shaders — 400x speedup on 4GB GPU |
 
 ---
 
-## Usage
-
-Once installed, the skill triggers automatically when you ask Claude about:
-
-- "Create an infinite procedural world"
-- "Generate deterministic terrain from coordinates"
-- "Build a seed-based dungeon generator"
-- "Make a star system generator like Elite Dangerous"
-- "Why are my procedural results different on different machines?"
-- "How do I parallelize my world generation?"
-
-### Example Prompts
+## Repository Structure
 
 ```
-"Create a Minecraft-style chunk generator where each chunk 
-is deterministically generated from its coordinates"
-```
-
-```
-"I'm getting different procedural results on different computers 
-with the same seed. Debug my generation code."
-```
-
-```
-"Design a galaxy generator with 400 billion star systems 
-that I can query in any order"
+BEYOND-TRIBONACCI/
+├── README.md                          # This file
+├── research/                          # Source documentation and methodology
+│   └── BeyondTribonacci-EndlessWorlds.md
+├── 01-Coordinate-Hash-Explorer/
+│   ├── README.md                      # Demo explanation
+│   ├── CoordinateHashExplorer.jsx     # React component source
+│   └── demo.html                      # Local preview (not hosted)
+├── 02-Property-Layer-Visualizer/
+│   ├── README.md
+│   ├── PropertyLayerVisualizer.jsx
+│   └── demo.html
+...
+└── 15-Sequential-vs-Parallel-Race/
+    ├── README.md
+    ├── SequentialVsParallelRace.jsx
+    └── demo.html
+└── 16-15-plus-webgpu/
+    ├── README.md
+    ├── SequentialVsParallelRaceV2.jsx
+    └── demo.html
 ```
 
 ---
 
-## Core Pattern
+## Research Foundation
 
-The fundamental pattern Zerobytes teaches:
+The `/research/` folder contains the complete methodology documentation that informed these demonstrations:
 
-```python
-import struct
-import xxhash
+- **Part I:** Tribonacci's Limitations — why sequential generation fails modern requirements
+- **Part II:** Hash-First Architecture — the position-as-seed paradigm
+- **Part III:** Coherent Noise — Simplex, fBm, and domain warping techniques
+- **Part IV:** Hierarchical Constraint Propagation — parent-child property inheritance
+- **Part IX:** Reference Implementation — complete C code for star/planet/terrain generation
+- **Part X:** Performance Benchmarks — throughput comparisons across hash functions
 
-def position_hash(x: int, y: int, z: int, salt: int = 0) -> int:
-    """Hash coordinates directly. No iteration required."""
-    h = xxhash.xxh64(seed=salt)
-    h.update(struct.pack('<qqq', x, y, z))
-    return h.intdigest()
-
-# Jump to ANY position instantly
-seed_at_origin = position_hash(0, 0, 0, world_seed)
-seed_at_far_corner = position_hash(999999, 999999, 999999, world_seed)
-# Both operations have identical cost: O(1)
-```
-
-Compare to traditional sequential generation:
-
-```python
-# OLD WAY: O(n) to reach position n
-state = initial_seed
-for i in range(1000000):  # Must iterate through all preceding positions
-    state = next_state(state)
-result = generate(state)
-
-# ZEROBYTES WAY: O(1) for any position
-result = generate(position_hash(1000000, 0, 0, seed))
-```
+This documentation provides the theoretical foundation and implementation specifics for extending any demo.
 
 ---
 
-## What's Included
+## Quick Start
 
-```
-Zerobytes-Skill/
-├── README.md              # This file
-├── zerobytes.skill        # Packaged skill for Claude
-├── zerobytes/
-│   └── SKILL.md           # Skill source
-├── Zerobytes-Agent.md     # Full agentic system prompt (for CLAUDE.md)
-├── ZeroBytes-mastery.md   # Comprehensive methodology guide
-├── BeyondTribonacci-EndlessWorlds.md  # Technical deep-dive
-└── demo/
-    ├── SequentialVsParallelRaceV2.jsx  # WebGPU React demo
-    └── demo.html                        # Standalone browser demo
-```
-
-### File Descriptions
-
-| File | Purpose | Use When |
-|------|---------|----------|
-| `zerobytes.skill` | Compact skill package | Adding to Claude skills directory |
-| `Zerobytes-Agent.md` | Full system prompt | Dedicated procedural generation projects |
-| `ZeroBytes-mastery.md` | Teaching document | Training other AI assistants |
-| `BeyondTribonacci-EndlessWorlds.md` | Technical reference | Deep implementation details |
-| `demo/` | **WebGPU visual demonstration** | Seeing the speed difference firsthand |
-
----
-
-## 🎮 Live Demonstration: WebGPU Race
-
-See the position-is-seed paradigm in action with our **WebGPU-powered visual demonstration**.
-
-### What It Shows
-
-The demo races two approaches side-by-side on a 64×64 grid (4,096 cells):
-
-| Approach | Method | Access | Result |
-|----------|--------|--------|--------|
-| 🐢 **Tribonacci** | Sequential CPU | O(N) iteration | ~200ms |
-| ⚡ **Hash (WebGPU)** | Parallel GPU | O(1) per cell | ~0.8ms |
-
-**Typical speedup: 250-650x** depending on grid size and GPU.
-
-### Running the Demo
+Each demo folder includes a `demo.html` for local preview:
 
 ```bash
-# Clone and open
-git clone https://github.com/MushroomFleet/Zerobytes-Skill.git
-cd Zerobytes-Skill/demo
-
-# Open in WebGPU-compatible browser (Chrome 113+, Edge 113+)
-open demo.html
+git clone https://github.com/MushroomFleet/BEYOND-TRIBONACCI.git
+cd BEYOND-TRIBONACCI/01-Coordinate-Hash-Explorer
+# Open demo.html in your browser
 ```
 
-### The Code Difference
+For development, each `.jsx` component can be imported into any React project:
 
-**Tribonacci (Sequential):**
-```javascript
-// MUST iterate through ALL previous states
-for (let i = 0; i < totalCells; i++) {
-  let temp = (s0 + s1 + s2) & 0xFFFF;
-  s0 = s1; s1 = s2; s2 = temp;
-  cells[i] = s2;  // Cannot skip, cannot parallelize
+```jsx
+import CoordinateHashExplorer from './01-Coordinate-Hash-Explorer/CoordinateHashExplorer';
+
+function App() {
+  return <CoordinateHashExplorer seed={12345} />;
 }
 ```
 
-**WebGPU Hash (Parallel):**
-```wgsl
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-  // Each GPU thread computes ONE cell independently
-  // ALL 4,096 cells computed SIMULTANEOUSLY
-  output[id.y * width + id.x] = hash(id.x, id.y, seed);
-}
-```
+---
 
-### Performance Scaling
+## Design Principles
 
-| Grid Size | Cells | Tribonacci (CPU) | Hash (WebGPU) | Speedup |
-|-----------|-------|------------------|---------------|---------|
-| 32×32 | 1,024 | ~50ms | ~0.5ms | **~100x** |
-| 64×64 | 4,096 | ~200ms | ~0.8ms | **~250x** |
-| 128×128 | 16,384 | ~800ms | ~1.2ms | **~650x** |
+All demonstrations follow these constraints:
 
-On a 4GB GPU, hash-based generation achieves **400x+ speedup** over sequential Tribonacci—and the gap widens with scale.
+- **Pure Functional Generation** — identical inputs always produce identical outputs
+- **Zero External State** — no databases, no caches, no persistence required
+- **Interactive Parameters** — every technique exposes adjustable controls
+- **Educational Focus** — clarity over optimization; understanding over performance
+- **Self-Contained** — each demo works independently with no cross-dependencies
 
 ---
 
-## Comparison: Tribonacci vs Position-Hash
+## Key Concepts Demonstrated
 
-| Aspect | Tribonacci (1984) | Zerobytes (2025) |
-|--------|-------------------|------------------|
-| Access time | O(n) sequential | O(1) direct |
-| Parallelization | Single-threaded only | Unlimited GPU cores |
-| Spatial coherence | None (unrelated neighbors) | Noise-layered regions |
-| Memory | 6 bytes state | 0 bytes (pure function) |
-| Period | ~2^48 then cycles | Infinite (hash space) |
-| Multi-scale | Not supported | Hierarchical inheritance |
+### Position-as-Seed (Demos 01, 08)
+Replace sequential state mutation with pure coordinate hashing. Any point in space immediately computes its properties: `properties(x, y, z) = hash(x, y, z, layer_salt)`
 
----
+### Coherent Noise (Demos 03, 04, 05, 06)
+Raw hashes produce white noise. Layer Simplex noise with fBm octaves and domain warping to create spatially meaningful patterns with controllable frequency characteristics.
 
-## Quick Reference
+### Hierarchical Constraints (Demos 07, 11, 12)
+Parent properties constrain child generation. Galaxy density affects star formation; stellar mass determines planetary composition; orbital radius influences atmospheric retention.
 
-### Hash Function Selection
-
-| Platform | Recommended | Avoid |
-|----------|-------------|-------|
-| Python | `xxhash`, `blake2b` | `hash()`, `random` |
-| C/C++ | xxHash3, MurmurHash3 | `rand()`, `srand()` |
-| GPU/GLSL | PCG, Wang hash | LCG |
-| JavaScript | `xxhash-wasm`, cyrb53 | `Math.random()` |
-
-### Anti-Patterns to Avoid
-
-```python
-# ❌ Sequential iteration
-for i in range(target): state = next(state)
-
-# ❌ Platform-dependent hash
-seed = hash((x, y))
-
-# ❌ Time-based seeding
-seed = int(time.time())
-
-# ❌ Global RNG state
-random.random()
-
-# ❌ Neighbor dependency during generation
-def gen(x, y): return f(gen(x+1, y))
-```
-
-### Correct Pattern
-
-```python
-# ✅ Direct coordinate hash
-result = position_hash(x, y, z, world_seed)
-
-# ✅ Coherent noise for regional properties
-biome = coherent_noise(x * 0.01, y * 0.01, seed)
-
-# ✅ Hierarchical seeds
-planet_seed = position_hash(system_seed, orbit_index, 0, 0)
-```
+### Spatial Coherence (Demos 09, 10)
+Unlike Tribonacci where adjacent systems share no mathematical kinship, hash-based generation with coherent noise ensures neighbors have related properties—enabling meaningful regional variation.
 
 ---
 
-## Applications
+## Bonus: WebGPU Acceleration
 
-Zerobytes methodology applies to:
+Demo 16 extends the Sequential vs Parallel Race with **WebGPU compute shaders**, demonstrating the full potential of the position-as-seed paradigm on modern graphics hardware.
 
-- **Open-world games**: Infinite terrain, chunk-based loading
-- **Space simulations**: Star systems, galaxies, planetary surfaces
-- **Roguelikes**: Deterministic dungeon generation, seeded runs
-- **Simulation games**: City generation, ecosystem modeling
-- **Procedural art**: Texture synthesis, generative visuals
-- **Testing**: Reproducible random test data generation
+| Metric | CPU (Demo 15) | WebGPU (Demo 16) |
+|--------|---------------|------------------|
+| Hash computation | Single-threaded | Thousands of GPU cores |
+| Typical speedup | 1x baseline | ~400x on 4GB GPU |
+| Grid fill time | Seconds | Milliseconds |
 
----
-
-## Background
-
-This skill distills techniques from David Braben's Elite (1984) and advances them for modern hardware. Where Braben's Tribonacci generator was optimal for 6502 processors with 32KB RAM, Zerobytes targets:
-
-- Multi-core CPUs with SIMD instructions
-- GPUs with thousands of parallel cores
-- 64-bit address spaces
-- Distributed computation across machines
-
-The core insight remains Braben's: **generate, don't store**. But the implementation evolves from sequential state machines to pure coordinate functions.
-
----
-
-## Contributing
-
-Contributions welcome! Areas of interest:
-
-- Additional language implementations (Rust, Go, C#)
-- GPU compute shader examples
-- Specialized generators (cities, ecosystems, music)
-- Performance benchmarks
-- Integration guides for game engines
-
----
-
-## License
-
-MIT License - See [LICENSE](LICENSE) for details.
+This demonstrates why the hash-first architecture matters: Tribonacci's sequential dependency chain cannot parallelize regardless of hardware. Position-as-seed generation scales linearly with available compute cores—from 8 CPU threads to 4,000+ GPU shader units.
 
 ---
 
@@ -318,23 +158,15 @@ MIT License - See [LICENSE](LICENSE) for details.
 If you use this codebase in your research or project, please cite:
 
 ```bibtex
-@software{zerobytes_skill,
-  title = {Zerobytes-Skill: Position-is-Seed Procedural Generation for AI Coding Assistants},
+@software{beyond_tribonacci,
+  title = {Beyond Tribonacci: Procedural Deterministic Seed-Based World Generation Showcase},
   author = {Drift Johnson},
   year = {2025},
-  url = {https://github.com/MushroomFleet/Zerobytes-Skill},
+  url = {https://github.com/MushroomFleet/BEYOND-TRIBONACCI},
   version = {1.0.0}
 }
 ```
 
----
-
-## Donate
+### Donate
 
 [![Ko-Fi](https://cdn.ko-fi.com/cdn/kofi3.png?v=3)](https://ko-fi.com/driftjohnson)
-
----
-
-<p align="center">
-  <i>Zero bytes store infinity. The universe springs complete from coordinates.</i>
-</p>
